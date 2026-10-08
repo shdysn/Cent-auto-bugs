@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.MoreHoriz
@@ -74,6 +75,7 @@ fun MiSelectionBottomBar(
     onRename: () -> Unit,
     onOpenInAnotherApp: () -> Unit,
     onDetails: () -> Unit,
+    onPrint: () -> Unit = {},
     modifier: Modifier = Modifier
 ) = CtSelectionBottomBar(
     selectedItems = selectedItems,
@@ -87,6 +89,7 @@ fun MiSelectionBottomBar(
     onRename = onRename,
     onOpenInAnotherApp = onOpenInAnotherApp,
     onDetails = onDetails,
+    onPrint = onPrint,
     modifier = modifier
 )
 
@@ -174,6 +177,7 @@ fun CtSelectionBottomBar(
     onRename: () -> Unit,
     onOpenInAnotherApp: () -> Unit,
     onDetails: () -> Unit,
+    onPrint: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -246,6 +250,18 @@ fun CtSelectionBottomBar(
                             onMakePrivate()
                         }
                     )
+                    if (selectedItems.size == 1 && !selectedItems.first().isDirectory) {
+                        DropdownMenuItem(
+                            text = { Text("Print / Save as PDF", fontSize = 15.sp) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                            },
+                            onClick = {
+                                showMoreMenu = false
+                                onPrint()
+                            }
+                        )
+                    }
                     if (selectedItems.size == 1) {
                         DropdownMenuItem(
                             text = { Text("Rename", fontSize = 15.sp) },

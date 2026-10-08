@@ -231,6 +231,12 @@ fun MainScreen(
                         if (items.size == 1) {
                             detailsTarget = items.first()
                         }
+                    },
+                    onPrint = {
+                        val item = storageState.selectedItems.firstOrNull()
+                        if (item != null && !item.isDirectory) {
+                            com.ct.explorer.utils.PrintHelper.printFile(context, item.file)
+                        }
                     }
                 )
             } else {
@@ -698,6 +704,18 @@ fun MainScreen(
                     Text(text = "Type: ${item.friendlyTypeLabel}", style = MaterialTheme.typography.bodyMedium)
                     Text(text = "Modified: ${item.formattedDate}", style = MaterialTheme.typography.bodySmall)
                     if (!item.isDirectory) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                detailsTarget = null
+                                com.ct.explorer.utils.PrintHelper.printFile(context, item.file)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF2563EB))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Print / Save as PDF")
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
                         OutlinedButton(
                             onClick = {

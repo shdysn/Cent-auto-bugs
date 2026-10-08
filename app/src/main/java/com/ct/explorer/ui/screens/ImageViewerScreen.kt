@@ -560,6 +560,22 @@ fun ImageViewerScreen(
 
                                 DropdownMenuItem(
                                     leadingIcon = {
+                                        Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF60A5FA), modifier = Modifier.size(20.dp))
+                                    },
+                                    text = {
+                                        Column {
+                                            Text("Print / Save as PDF", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                            Text("Print photo via Android print", color = Color.LightGray, fontSize = 11.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        state.currentFile?.let { com.ct.explorer.utils.PrintHelper.printFile(context, it) }
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    leadingIcon = {
                                         Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color(0xFFA78BFA), modifier = Modifier.size(20.dp))
                                     },
                                     text = {

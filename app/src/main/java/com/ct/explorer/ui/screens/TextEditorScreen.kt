@@ -1,39 +1,76 @@
 package com.ct.explorer.ui.screens
 
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.WrapText
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.activity.compose.BackHandler
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ct.explorer.data.model.FileItem
 import com.ct.explorer.ui.theme.CtOrange
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
+import com.ct.explorer.utils.FileOpener
+
+enum class EditorViewMode {
+    CODE_ONLY,
+    SPLIT_VIEW,
+    CHROMIUM_PREVIEW
+}
+
+enum class DeviceViewport(val title: String, val widthDp: Int?) {
+    RESPONSIVE("Responsive", null),
+    MOBILE("Mobile (375px)", 375),
+    TABLET("Tablet (768px)", 768)
+}
+
+data class ConsoleLogItem(
+    val message: String,
+    val lineNumber: Int,
+    val level: ConsoleMessage.MessageLevel
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,15 +78,40 @@ fun TextEditorScreen(
     viewModel: ExplorerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val state by viewModel.textEditorState.collectAsStateWithLifecycle()
+
+    // TextField state with cursor tracking for quick snippet insertion
+    var textFieldValue by remember(state.content) {
+        mutableStateOf(TextFieldValue(state.content, TextRange(state.content.length)))
+    }
+
+    // Keep state synchronized with TextField
+    LaunchedEffect(state.content) {
+        if (state.content != textFieldValue.text) {
+            textFieldValue = TextFieldValue(state.content, TextRange(state.content.length))
+        }
+    }
+
     val scrollState = rememberScrollState()
     val hScrollState = rememberScrollState()
+
+    // Mode: Code, Split, Preview
+    var viewMode by remember(state.isHtmlMode) {
+        mutableStateOf(if (state.isHtmlMode) EditorViewMode.SPLIT_VIEW else EditorViewMode.CODE_ONLY)
+    }
+
+    var selectedViewport by remember { mutableStateOf(DeviceViewport.RESPONSIVE) }
+    var reloadTrigger by remember { mutableIntStateOf(0) }
+    var webProgress by remember { mutableIntStateOf(100) }
+    var consoleLogs by remember { mutableStateOf<List<ConsoleLogItem>>(emptyList()) }
+    var showConsoleSheet by remember { mutableStateOf(false) }
 
     BackHandler {
         viewModel.handleBackPress()
     }
 
-    val displayTitle = state.title.ifEmpty { state.file?.name ?: "Text Viewer" }
+    val displayTitle = state.title.ifEmpty { state.file?.name ?: "Editor" }
 
     Scaffold(
         modifier = modifier.testTag("text_editor_screen"),
@@ -58,6 +120,21 @@ fun TextEditorScreen(
                 title = {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state.isHtmlMode) {
+                                Surface(
+                                    color = Color(0xFFE44D26), // HTML5 Official Brand Orange
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.padding(end = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "HTML5",
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = displayTitle,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -65,15 +142,30 @@ fun TextEditorScreen(
                             )
                             if (state.isModified) {
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "• Edited",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CtOrange
-                                )
+                                Surface(
+                                    color = CtOrange.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "Edited",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = CtOrange,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
                             }
                         }
                         Text(
-                            text = if (state.showHtmlPreview) "HTML Web Preview" else "${state.lineCount} lines, ${state.charCount} characters",
+                            text = if (state.isHtmlMode) {
+                                when (viewMode) {
+                                    EditorViewMode.CODE_ONLY -> "Source Code (${state.lineCount} lines)"
+                                    EditorViewMode.SPLIT_VIEW -> "Live Chromium Split (${state.lineCount} lines)"
+                                    EditorViewMode.CHROMIUM_PREVIEW -> "Chromium Web Render"
+                                }
+                            } else {
+                                "${state.lineCount} lines • ${state.charCount} characters"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -88,18 +180,68 @@ fun TextEditorScreen(
                     }
                 },
                 actions = {
-                    // HTML Preview vs Code Toggle button
+                    // HTML View Switcher Tabs (Code / Split / Preview)
                     if (state.isHtmlMode) {
-                        IconButton(onClick = { viewModel.toggleHtmlPreview() }) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ViewModeTabButton(
+                                    icon = Icons.Default.Code,
+                                    label = "Code",
+                                    selected = viewMode == EditorViewMode.CODE_ONLY,
+                                    onClick = { viewMode = EditorViewMode.CODE_ONLY }
+                                )
+                                ViewModeTabButton(
+                                    icon = Icons.Default.VerticalSplit,
+                                    label = "Split",
+                                    selected = viewMode == EditorViewMode.SPLIT_VIEW,
+                                    onClick = { viewMode = EditorViewMode.SPLIT_VIEW }
+                                )
+                                ViewModeTabButton(
+                                    icon = Icons.Default.Language,
+                                    label = "Live",
+                                    selected = viewMode == EditorViewMode.CHROMIUM_PREVIEW,
+                                    onClick = { viewMode = EditorViewMode.CHROMIUM_PREVIEW }
+                                )
+                            }
+                        }
+                    }
+
+                    // Refresh / Live Run button for HTML
+                    if (state.isHtmlMode && viewMode != EditorViewMode.CODE_ONLY) {
+                        IconButton(onClick = { reloadTrigger++ }) {
                             Icon(
-                                imageVector = if (state.showHtmlPreview) Icons.Default.Code else Icons.Default.Language,
-                                contentDescription = if (state.showHtmlPreview) "Show Code" else "Show HTML Preview",
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Reload Chromium Preview",
                                 tint = CtOrange
+                            )
+                        }
+
+                        // Open in External Browser
+                        IconButton(onClick = {
+                            val activeFile = state.file
+                            if (activeFile != null) {
+                                FileOpener.openWithChooser(context, FileItem(activeFile))
+                            } else {
+                                Toast.makeText(context, "Save file to open in browser", Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = "Open in Chrome / Browser",
+                                tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
 
-                    if (!state.showHtmlPreview) {
+                    // Word Wrap Toggle (when editor is visible)
+                    if (viewMode != EditorViewMode.CHROMIUM_PREVIEW) {
                         IconButton(
                             onClick = { viewModel.toggleEditorWordWrap() },
                             modifier = Modifier.testTag("text_editor_wrap_button")
@@ -110,111 +252,706 @@ fun TextEditorScreen(
                                 tint = if (state.wordWrap) CtOrange else MaterialTheme.colorScheme.onSurface
                             )
                         }
+                    }
 
-                        Button(
-                            onClick = { viewModel.saveEditorFile() },
-                            enabled = !state.isSaving && !state.isReadOnly,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (state.isReadOnly) MaterialTheme.colorScheme.surfaceVariant else CtOrange,
-                                contentColor = if (state.isReadOnly) MaterialTheme.colorScheme.onSurfaceVariant else Color.White
-                            ),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.padding(end = 8.dp).testTag("text_editor_save_button")
-                        ) {
-                            if (state.isSaving) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
-                            } else if (state.isReadOnly) {
-                                Text("Read Only")
+                    // Print / Save as PDF
+                    IconButton(
+                        onClick = {
+                            val activeFile = state.file
+                            if (activeFile != null) {
+                                com.ct.explorer.utils.PrintHelper.printFile(context, activeFile)
                             } else {
-                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Save")
+                                com.ct.explorer.utils.PrintHelper.printTextContent(context, displayTitle, textFieldValue.text, displayTitle)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print / Save as PDF",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Save Button
+                    Button(
+                        onClick = { viewModel.saveEditorFile() },
+                        enabled = !state.isSaving && !state.isReadOnly,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (state.isReadOnly) MaterialTheme.colorScheme.surfaceVariant else CtOrange,
+                            contentColor = if (state.isReadOnly) MaterialTheme.colorScheme.onSurfaceVariant else Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(end = 8.dp).testTag("text_editor_save_button")
+                    ) {
+                        if (state.isSaving) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                        } else if (state.isReadOnly) {
+                            Text("Read Only", fontSize = 12.sp)
+                        } else {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(Color(0xFF13141F)) // Modern Dark IDE Background
+        ) {
+            // HTML Snippet Toolbar (Only when editor is active)
+            if (state.isHtmlMode && viewMode != EditorViewMode.CHROMIUM_PREVIEW) {
+                HtmlSnippetToolbar(
+                    onInsertSnippet = { snippet, cursorOffset ->
+                        val currentText = textFieldValue.text
+                        val selection = textFieldValue.selection
+                        val start = selection.min
+                        val end = selection.max
+
+                        val newText = currentText.substring(0, start) + snippet + currentText.substring(end)
+                        val newCursor = start + (cursorOffset ?: snippet.length)
+                        textFieldValue = TextFieldValue(newText, TextRange(newCursor))
+                        viewModel.updateEditorContent(newText)
+                    },
+                    onInsertBoilerplate = {
+                        val boilerplate = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${state.title.ifEmpty { "HTML Preview" }}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      margin-top: 16px;
+    }
+    h1 { color: #2563eb; margin-top: 0; }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚡ Cent Chromium Preview</h1>
+  <p>Live, responsive modern HTML5 and CSS3 preview.</p>
+  <div class="card">
+    <p>Tap the button below to test JavaScript interactivity:</p>
+    <button onclick="alert('Hello from Chromium Engine!')">Interactive Alert</button>
+  </div>
+</body>
+</html>
+                        """.trimIndent()
+                        textFieldValue = TextFieldValue(boilerplate, TextRange(boilerplate.length))
+                        viewModel.updateEditorContent(boilerplate)
+                    }
+                )
+            }
+
+            // Main Editor & Render Display based on viewMode
+            when {
+                // 1. FULL PREVIEW MODE
+                viewMode == EditorViewMode.CHROMIUM_PREVIEW && state.isHtmlMode -> {
+                    ChromiumPreviewContainer(
+                        htmlContent = textFieldValue.text,
+                        file = state.file,
+                        reloadTrigger = reloadTrigger,
+                        viewport = selectedViewport,
+                        onViewportChange = { selectedViewport = it },
+                        webProgress = webProgress,
+                        onProgressChange = { webProgress = it },
+                        consoleLogs = consoleLogs,
+                        onNewConsoleLog = { consoleLogs = consoleLogs + it },
+                        onOpenConsole = { showConsoleSheet = true },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // 2. SPLIT VIEW MODE (Top: Code Editor, Bottom: Live Chromium)
+                viewMode == EditorViewMode.SPLIT_VIEW && state.isHtmlMode -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Top Half: Code Editor
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            CodeEditorComponent(
+                                textFieldValue = textFieldValue,
+                                onValueChange = {
+                                    textFieldValue = it
+                                    viewModel.updateEditorContent(it.text)
+                                },
+                                wordWrap = state.wordWrap,
+                                scrollState = scrollState,
+                                hScrollState = hScrollState,
+                                lineCount = state.lineCount
+                            )
+                        }
+
+                        // Divider with live status pill
+                        Surface(
+                            color = Color(0xFF1E2030),
+                            border = BorderStroke(1.dp, Color(0xFF2A2D45)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(Color(0xFF10B981), CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "CHROMIUM LIVE RENDER",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { reloadTrigger++ },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp), tint = CtOrange)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Live Sync", fontSize = 11.sp, color = CtOrange, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Bottom Half: Live Chromium WebView
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            ChromiumPreviewContainer(
+                                htmlContent = textFieldValue.text,
+                                file = state.file,
+                                reloadTrigger = reloadTrigger,
+                                viewport = selectedViewport,
+                                onViewportChange = { selectedViewport = it },
+                                webProgress = webProgress,
+                                onProgressChange = { webProgress = it },
+                                consoleLogs = consoleLogs,
+                                onNewConsoleLog = { consoleLogs = consoleLogs + it },
+                                onOpenConsole = { showConsoleSheet = true },
+                                isCompact = true,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+
+                // 3. CODE ONLY MODE (Default for plain text or full screen code editing)
+                else -> {
+                    CodeEditorComponent(
+                        textFieldValue = textFieldValue,
+                        onValueChange = {
+                            textFieldValue = it
+                            viewModel.updateEditorContent(it.text)
+                        },
+                        wordWrap = state.wordWrap,
+                        scrollState = scrollState,
+                        hScrollState = hScrollState,
+                        lineCount = state.lineCount
+                    )
+                }
+            }
+        }
+    }
+
+    // Console Logs Bottom Sheet
+    if (showConsoleSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showConsoleSheet = false },
+            containerColor = Color(0xFF1E1E2E)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Terminal, contentDescription = null, tint = CtOrange)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Chromium Console Logs (${consoleLogs.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    if (consoleLogs.isNotEmpty()) {
+                        TextButton(onClick = { consoleLogs = emptyList() }) {
+                            Text("Clear", color = Color(0xFF94A3B8))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (consoleLogs.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No JavaScript errors or console logs.", color = Color(0xFF64748B), fontSize = 13.sp)
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        consoleLogs.forEach { log ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = when (log.level) {
+                                    ConsoleMessage.MessageLevel.ERROR -> Color(0xFF3B1219)
+                                    ConsoleMessage.MessageLevel.WARNING -> Color(0xFF38280B)
+                                    else -> Color(0xFF181825)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp)
+                            ) {
+                                Row(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        text = "Line ${log.lineNumber}:",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when (log.level) {
+                                            ConsoleMessage.MessageLevel.ERROR -> Color(0xFFF87171)
+                                            ConsoleMessage.MessageLevel.WARNING -> Color(0xFFFBBF24)
+                                            else -> Color(0xFF60A5FA)
+                                        },
+                                        modifier = Modifier.width(65.dp)
+                                    )
+                                    Text(
+                                        text = log.message,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewModeTabButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val bg by animateColorAsState(if (selected) CtOrange else Color.Transparent, label = "TabBg")
+    val contentColor by animateColorAsState(if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, label = "TabContent")
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = bg,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(label, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = contentColor)
+        }
+    }
+}
+
+@Composable
+private fun HtmlSnippetToolbar(
+    onInsertSnippet: (String, Int?) -> Unit,
+    onInsertBoilerplate: () -> Unit
+) {
+    val snippets = listOf(
+        SnippetItem("<div>", "<div>\n    \n</div>", 10),
+        SnippetItem("<p>", "<p></p>", 3),
+        SnippetItem("<h1>", "<h1></h1>", 4),
+        SnippetItem("<span>", "<span></span>", 6),
+        SnippetItem("<a>", "<a href=\"\"></a>", 9),
+        SnippetItem("<button>", "<button></button>", 8),
+        SnippetItem("<img>", "<img src=\"\" alt=\"\" />", 10),
+        SnippetItem("<ul>", "<ul>\n    <li></li>\n</ul>", 13),
+        SnippetItem("<table>", "<table border=\"1\">\n    <tr>\n        <td></td>\n    </tr>\n</table>", 37),
+        SnippetItem("<style>", "<style>\n    \n</style>", 12),
+        SnippetItem("<script>", "<script>\n    \n</script>", 13),
+        SnippetItem("class=\"\"", "class=\"\"", 7),
+        SnippetItem("id=\"\"", "id=\"\"", 4)
+    )
+
+    Surface(
+        color = Color(0xFF1A1C29),
+        border = BorderStroke(0.5.dp, Color(0xFF2A2D45)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFE44D26).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, Color(0xFFE44D26).copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onInsertBoilerplate() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFFE44D26), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("HTML5 Template", color = Color(0xFFFF8A65), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            items(snippets) { item ->
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF25283B),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onInsertSnippet(item.code, item.cursorOffset) }
+                ) {
+                    Text(
+                        text = item.label,
+                        color = Color(0xFFCBD5E1),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class SnippetItem(
+    val label: String,
+    val code: String,
+    val cursorOffset: Int? = null
+)
+
+@Composable
+private fun CodeEditorComponent(
+    textFieldValue: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    wordWrap: Boolean,
+    scrollState: androidx.compose.foundation.ScrollState,
+    hScrollState: androidx.compose.foundation.ScrollState,
+    lineCount: Int
+) {
+    val boundedLineCount = lineCount.coerceIn(1, 3000)
+    val lineNumbersText = remember(boundedLineCount) {
+        (1..boundedLineCount).joinToString("\n")
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .background(Color(0xFF13141F))
+    ) {
+        // Line numbers gutter
+        Text(
+            text = lineNumbersText,
+            style = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                lineHeight = 22.sp,
+                color = Color(0xFF475569)
+            ),
+            modifier = Modifier
+                .background(Color(0xFF181A28))
+                .border(BorderStroke(0.5.dp, Color(0xFF23263B)))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        )
+
+        val editorModifier = if (wordWrap) {
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(hScrollState)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        }
+
+        BasicTextField(
+            value = textFieldValue,
+            onValueChange = onValueChange,
+            textStyle = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                lineHeight = 22.sp,
+                color = Color(0xFFF1F5F9)
+            ),
+            cursorBrush = SolidColor(CtOrange),
+            modifier = editorModifier.testTag("text_editor_field")
+        )
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun ChromiumPreviewContainer(
+    htmlContent: String,
+    file: java.io.File?,
+    reloadTrigger: Int,
+    viewport: DeviceViewport,
+    onViewportChange: (DeviceViewport) -> Unit,
+    webProgress: Int,
+    onProgressChange: (Int) -> Unit,
+    consoleLogs: List<ConsoleLogItem>,
+    onNewConsoleLog: (ConsoleLogItem) -> Unit,
+    onOpenConsole: () -> Unit,
+    isCompact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+
+    Column(modifier = modifier.background(Color(0xFF0F111A))) {
+        // Chromium Status & Controls Bar
+        Surface(
+            color = Color(0xFF181A28),
+            border = BorderStroke(0.5.dp, Color(0xFF262942)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left badge
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color(0xFF10B981).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "CHROMIUM",
+                            color = Color(0xFF10B981),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                    if (webProgress in 1..99) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            color = CtOrange,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+
+                // Middle: Viewport Switcher (if not compact)
+                if (!isCompact) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        DeviceViewport.values().forEach { vp ->
+                            val isSelected = viewport == vp
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) CtOrange.copy(alpha = 0.2f) else Color.Transparent,
+                                border = if (isSelected) BorderStroke(1.dp, CtOrange) else null,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onViewportChange(vp) }
+                            ) {
+                                Text(
+                                    text = vp.title.substringBefore(" "),
+                                    color = if (isSelected) CtOrange else Color(0xFF94A3B8),
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Right: Console trigger
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (consoleLogs.any { it.level == ConsoleMessage.MessageLevel.ERROR }) Color(0xFFEF4444).copy(alpha = 0.2f) else Color(0xFF334155),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onOpenConsole() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Terminal, contentDescription = "Console", tint = Color.White, modifier = Modifier.size(11.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "${consoleLogs.size}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Web Loading Progress Line
+        if (webProgress in 1..99) {
+            LinearProgressIndicator(
+                progress = { webProgress / 100f },
+                color = CtOrange,
+                trackColor = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
             )
         }
-    ) { innerPadding ->
-        if (state.showHtmlPreview) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
+
+        // Chromium Render Box (With viewport simulation if Mobile/Tablet chosen)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (viewport.widthDp != null) Color(0xFF0A0C14) else Color.White),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            val viewportModifier = if (viewport.widthDp != null) {
+                Modifier
+                    .width(viewport.widthDp.dp)
+                    .fillMaxHeight()
+                    .padding(vertical = 10.dp)
+                    .shadow(12.dp, RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(Color.White)
-            ) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.builtInZoomControls = true
-                            settings.displayZoomControls = false
-                            webViewClient = WebViewClient()
+            } else {
+                Modifier.fillMaxSize()
+            }
+
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            databaseEnabled = true
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
+                            allowFileAccess = true
+                            allowContentAccess = true
+                            setSupportZoom(true)
+                            builtInZoomControls = true
+                            displayZoomControls = false
+                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                         }
-                    },
-                    update = { webView ->
-                        webView.loadDataWithBaseURL(null, state.content, "text/html", "UTF-8", null)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
-                val lineCount = state.lineCount.coerceIn(1, 3000)
-                val lineNumbersText = remember(lineCount) {
-                    (1..lineCount).joinToString("\n")
-                }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                ) {
-                    // Line numbers gutter
-                    Text(
-                        text = lineNumbersText,
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    )
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                onProgressChange(20)
+                            }
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                onProgressChange(100)
+                            }
+                        }
 
-                    val editorModifier = if (state.wordWrap) {
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    } else {
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(hScrollState)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                onProgressChange(newProgress)
+                            }
+
+                            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                                onNewConsoleLog(
+                                    ConsoleLogItem(
+                                        message = consoleMessage.message() ?: "",
+                                        lineNumber = consoleMessage.lineNumber(),
+                                        level = consoleMessage.messageLevel() ?: ConsoleMessage.MessageLevel.LOG
+                                    )
+                                )
+                                return super.onConsoleMessage(consoleMessage)
+                            }
+                        }
+
+                        val baseUrl = file?.parentFile?.toURI()?.toString() ?: "file:///"
+                        loadDataWithBaseURL(baseUrl, htmlContent, "text/html", "UTF-8", null)
+                        webViewInstance = this
                     }
-
-                    BasicTextField(
-                        value = state.content,
-                        onValueChange = { viewModel.updateEditorContent(it) },
-                        textStyle = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            color = MaterialTheme.colorScheme.onBackground
-                        ),
-                        cursorBrush = SolidColor(CtOrange),
-                        modifier = editorModifier.testTag("text_editor_field")
-                    )
-                }
-            }
+                },
+                update = { webView ->
+                    webViewInstance = webView
+                    val baseUrl = file?.parentFile?.toURI()?.toString() ?: "file:///"
+                    webView.loadDataWithBaseURL(baseUrl, htmlContent, "text/html", "UTF-8", null)
+                },
+                modifier = viewportModifier
+            )
         }
     }
 }

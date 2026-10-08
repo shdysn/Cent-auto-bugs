@@ -197,6 +197,15 @@ fun WordViewerScreen(
                         }
                     }
 
+                    // Print / Save as PDF
+                    if (file != null) {
+                        IconButton(onClick = {
+                            com.ct.explorer.utils.PrintHelper.printFile(context, file)
+                        }) {
+                            Icon(Icons.Default.Print, contentDescription = "Print / Save as PDF")
+                        }
+                    }
+
                     // Open in External App (Office / Google Docs)
                     if (file != null) {
                         IconButton(onClick = {

@@ -174,6 +174,30 @@ fun OpenFileChooserDialog(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
+            // Print / Save as PDF Button
+            if (!item.isDirectory) {
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        com.ct.explorer.utils.PrintHelper.printFile(context, item.file)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Print,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color(0xFF2563EB)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(text = "Print / Save as PDF", fontWeight = FontWeight.Medium)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // List of detected installed apps for this file
             if (appChoices.isNotEmpty()) {
                 Text(

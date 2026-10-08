@@ -257,6 +257,19 @@ fun PdfViewerScreen(
                         )
                     }
 
+                    // Print / Save as PDF
+                    if (file != null) {
+                        IconButton(onClick = {
+                            com.ct.explorer.utils.PrintHelper.printFile(context, file)
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Print,
+                                contentDescription = "Print / Save as PDF",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
                     // Open in External App (Adobe Reader / Google Drive)
                     if (file != null) {
                         IconButton(onClick = {

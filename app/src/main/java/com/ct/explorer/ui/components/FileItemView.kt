@@ -295,6 +295,14 @@ fun FileActionDropdownMenu(
         )
         if (!item.isDirectory) {
             DropdownMenuItem(
+                text = { Text("Print / Save as PDF") },
+                leadingIcon = { Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF2563EB)) },
+                onClick = {
+                    onDismiss()
+                    onMenuAction("print")
+                }
+            )
+            DropdownMenuItem(
                 text = { Text("Open with...") },
                 leadingIcon = { Icon(Icons.Default.Apps, contentDescription = null) },
                 onClick = {
