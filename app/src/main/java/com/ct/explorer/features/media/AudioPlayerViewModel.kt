@@ -58,6 +58,15 @@ class AudioPlayerViewModel(application: Application) : BaseFeatureViewModel(appl
                 val fullList = if (playlist.isNotEmpty()) playlist else listOf(item)
                 val idx = fullList.indexOfFirst { it.path == item.path }.coerceAtLeast(0)
 
+                val targetSpeed = _audioPlayerState.value.playbackSpeed
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && targetSpeed != 1.0f) {
+                    try {
+                        val params = player.playbackParams ?: android.media.PlaybackParams()
+                        params.speed = targetSpeed
+                        player.playbackParams = params
+                    } catch (_: Exception) {}
+                }
+
                 player.start()
                 mediaPlayer = player
 
@@ -73,7 +82,8 @@ class AudioPlayerViewModel(application: Application) : BaseFeatureViewModel(appl
                     playlist = fullList,
                     currentIndex = idx,
                     isShuffle = _audioPlayerState.value.isShuffle,
-                    isRepeat = _audioPlayerState.value.isRepeat
+                    isRepeat = _audioPlayerState.value.isRepeat,
+                    playbackSpeed = targetSpeed
                 )
 
                 player.setOnCompletionListener {
@@ -148,6 +158,18 @@ class AudioPlayerViewModel(application: Application) : BaseFeatureViewModel(appl
 
     fun toggleAudioRepeat() {
         _audioPlayerState.update { it.copy(isRepeat = !it.isRepeat) }
+    }
+
+    fun setAudioPlaybackSpeed(speed: Float) {
+        _audioPlayerState.update { it.copy(playbackSpeed = speed) }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            try {
+                val player = mediaPlayer ?: return
+                val params = player.playbackParams ?: android.media.PlaybackParams()
+                params.speed = speed
+                player.playbackParams = params
+            } catch (_: Exception) {}
+        }
     }
 
     fun closeAudioPlayer() {

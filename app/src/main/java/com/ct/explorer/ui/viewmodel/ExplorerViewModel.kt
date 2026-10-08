@@ -66,7 +66,8 @@ data class AudioPlayerState(
     val playlist: List<FileItem> = emptyList(),
     val currentIndex: Int = 0,
     val isShuffle: Boolean = false,
-    val isRepeat: Boolean = false
+    val isRepeat: Boolean = false,
+    val playbackSpeed: Float = 1.0f
 )
 
 data class ZipViewerState(
@@ -1646,6 +1647,7 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     fun toggleAudioExpanded() = audioPlayerViewModel.toggleAudioExpanded()
     fun toggleAudioShuffle() = audioPlayerViewModel.toggleAudioShuffle()
     fun toggleAudioRepeat() = audioPlayerViewModel.toggleAudioRepeat()
+    fun setAudioPlaybackSpeed(speed: Float) = audioPlayerViewModel.setAudioPlaybackSpeed(speed)
     fun closeAudioPlayer() = audioPlayerViewModel.closeAudioPlayer()
 
     // ==========================================

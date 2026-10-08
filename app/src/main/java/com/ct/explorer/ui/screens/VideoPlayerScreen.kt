@@ -144,7 +144,7 @@ fun VideoPlayerScreen(
     var duration by remember { mutableIntStateOf(0) }
     var isSeeking by remember { mutableFloatStateOf(-1f) }
     var showControls by remember { mutableStateOf(true) }
-    var showQuickRibbon by remember { mutableStateOf(true) }
+    var showQuickRibbon by remember { mutableStateOf(false) }
     var showCenterTransport by remember { mutableStateOf(true) }
     var showRemainingTime by remember { mutableStateOf(false) }
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
@@ -1159,14 +1159,14 @@ fun VideoPlayerScreen(
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(end = 6.dp)
+                                .padding(horizontal = 8.dp)
                         ) {
                             Text(
                                 text = videoState.title.ifEmpty { file?.name ?: "Video Player" },
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
-                                    shadow = Shadow(Color.Black, blurRadius = 4f)
+                                    shadow = Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 6f)
                                 ),
                                 color = Color.White,
                                 maxLines = 1,
@@ -1199,209 +1199,48 @@ fun VideoPlayerScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1
                                 )
-
-                                Text(
-                                    text = "• $batteryLevel% • $currentClockText",
-                                    color = Color.White.copy(alpha = 0.65f),
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
                         }
 
-                        // MX Iconic HW+ / HW / SW Decoder Toggle Badge
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MxBlue.copy(alpha = 0.20f),
-                            border = BorderStroke(1.dp, MxBlue),
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .clickable {
-                                    val modes = MxDecoderMode.values()
-                                    decoderMode = modes[(decoderMode.ordinal + 1) % modes.size]
-                                    triggerCenterBadge("Decoder: ${decoderMode.label}")
+                        // Picture in Picture
+                        IconButton(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    try {
+                                        val w = videoWidth.coerceAtLeast(1)
+                                        val h = videoHeight.coerceAtLeast(1)
+                                        val ratio = w.toFloat() / h.toFloat()
+                                        val safeRational = if (ratio in 0.42f..2.38f) Rational(w, h) else Rational(16, 9)
+                                        val paramsBuilder = PictureInPictureParams.Builder().setAspectRatio(safeRational)
+                                        activity?.enterPictureInPictureMode(paramsBuilder.build())
+                                    } catch (_: Exception) {
+                                        viewModel.showMessage("PiP mode activated")
+                                    }
+                                } else {
+                                    viewModel.showMessage("PiP requires Android 8.0+")
                                 }
-                                .testTag("decoder_toggle_badge")
-                        ) {
-                            Text(
-                                text = decoderMode.label,
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-
-                        // Audio Track & 5-Band Equalizer Button
-                        IconButton(
-                            onClick = { showAudioBoostSheet = true },
-                            modifier = Modifier.size(40.dp)
+                            },
+                            modifier = Modifier.size(42.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Equalizer,
-                                contentDescription = "5-Band Equalizer & Boost",
-                                tint = if (volumePercent > 100) MxAmber else MxCyan,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        // Subtitle (CC) Manager Button
-                        IconButton(
-                            onClick = { showSubtitleSheet = true },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Subtitles",
-                                tint = if (isSubtitlesEnabled) MxBlue else Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        // More Tools Drawer Button
-                        IconButton(
-                            onClick = { showPowerfulPlaybackSheet = true },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More Tools",
+                                imageVector = Icons.Default.PictureInPictureAlt,
+                                contentDescription = "Picture in Picture",
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                    }
 
-                    // Secondary MX Player Quick-Action Pill Strip
-                    AnimatedVisibility(visible = showQuickRibbon) {
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Pro Tools & Settings Sheet
+                        IconButton(
+                            onClick = { showPowerfulPlaybackSheet = true },
+                            modifier = Modifier.size(42.dp)
                         ) {
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.Default.Speed,
-                                    label = "${playbackSpeed}x",
-                                    isActive = playbackSpeed != 1.0f,
-                                    onClick = { showSpeedSheet = true }
-                                )
-                            }
-
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.Default.Equalizer,
-                                    label = if (volumePercent > 100) "EQ • $volumePercent% Boost" else "5-Band EQ",
-                                    isActive = volumePercent > 100 || selectedEqualizerPreset != "Flat / Direct",
-                                    activeColor = if (volumePercent > 100) MxAmber else MxBlue,
-                                    onClick = { showAudioBoostSheet = true }
-                                )
-                            }
-
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.Default.Headphones,
-                                    label = "BG Play",
-                                    isActive = isBackgroundPlay,
-                                    onClick = {
-                                        isBackgroundPlay = !isBackgroundPlay
-                                        triggerCenterBadge(if (isBackgroundPlay) "🎧 Background Play ON" else "Background Play OFF")
-                                    }
-                                )
-                            }
-
-                            item {
-                                val abLabel = when {
-                                    loopPointA != null && loopPointB != null -> "A-B (${formatTime(loopPointA!!)}-${formatTime(loopPointB!!)})"
-                                    loopPointA != null -> "A Set (${formatTime(loopPointA!!)}) → Tap B"
-                                    else -> "A-B Repeat"
-                                }
-                                MxQuickActionChip(
-                                    icon = Icons.Default.Repeat,
-                                    label = abLabel,
-                                    isActive = loopPointA != null,
-                                    activeColor = MxAmber,
-                                    onClick = {
-                                        when {
-                                            loopPointA == null -> {
-                                                loopPointA = currentPos
-                                                triggerCenterBadge("Point A set at ${formatTime(currentPos)}")
-                                            }
-                                            loopPointB == null -> {
-                                                if (currentPos > loopPointA!! + 1000) {
-                                                    loopPointB = currentPos
-                                                    triggerCenterBadge("Looping A-B (${formatTime(loopPointA!!)} - ${formatTime(currentPos)})")
-                                                } else {
-                                                    viewModel.showMessage("Point B must be after Point A")
-                                                }
-                                            }
-                                            else -> {
-                                                loopPointA = null
-                                                loopPointB = null
-                                                triggerCenterBadge("A-B Loop Cleared")
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.Default.Flip,
-                                    label = "Mirror",
-                                    isActive = isMirrored,
-                                    onClick = {
-                                        isMirrored = !isMirrored
-                                        triggerCenterBadge(if (isMirrored) "⇄ Video Mirrored" else "⇄ Normal Orientation")
-                                    }
-                                )
-                            }
-
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.Default.DarkMode,
-                                    label = "Night Mode",
-                                    isActive = isNightMode,
-                                    onClick = {
-                                        isNightMode = !isNightMode
-                                        triggerCenterBadge(if (isNightMode) "🌙 Night Filter ON" else "Night Filter OFF")
-                                    }
-                                )
-                            }
-
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.Default.PhotoCamera,
-                                    label = "Screenshot",
-                                    isActive = false,
-                                    onClick = {
-                                        captureVideoScreenshot(file, currentPos, scope) { msg ->
-                                            viewModel.showMessage(msg)
-                                        }
-                                    }
-                                )
-                            }
-
-                            item {
-                                val timerLabel = sleepTimerRemainingSec?.let { "Timer ${formatTime(it * 1000)}" } ?: "Sleep Timer"
-                                MxQuickActionChip(
-                                    icon = Icons.Default.Timer,
-                                    label = timerLabel,
-                                    isActive = sleepTimerRemainingSec != null,
-                                    onClick = { showSleepTimerDialog = true }
-                                )
-                            }
-
-                            item {
-                                MxQuickActionChip(
-                                    icon = Icons.AutoMirrored.Filled.QueueMusic,
-                                    label = "Playlist (${videoState.playlist.size})",
-                                    isActive = false,
-                                    onClick = { showPlaylistSheet = true }
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Playback Settings",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
                     }
                 }
@@ -1410,32 +1249,58 @@ fun VideoPlayerScreen(
                 if (showCenterTransport && hudSeekTargetMs == null && hudCenterBadgeText == null) {
                     Row(
                         modifier = Modifier.align(Alignment.Center),
-                        horizontalArrangement = Arrangement.spacedBy(32.dp),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.45f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
-                            modifier = Modifier
-                                .size(50.dp)
-                                .clickable {
-                                    val target = (currentPos - 10_000).coerceAtLeast(0)
-                                    videoViewRef?.seekTo(target)
-                                    currentPos = target
+                        if (videoState.playlist.size > 1) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.45f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clickable { viewModel.playPreviousVideo() }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.SkipPrevious,
+                                        contentDescription = "Previous Video",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(26.dp))
                             }
                         }
 
                         Surface(
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.55f),
-                            border = BorderStroke(1.5.dp, MxBlue.copy(alpha = 0.85f)),
+                            color = Color.Black.copy(alpha = 0.50f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                             modifier = Modifier
-                                .size(66.dp)
+                                .size(54.dp)
+                                .clickable {
+                                    val target = (currentPos - 10_000).coerceAtLeast(0)
+                                    videoViewRef?.seekTo(target)
+                                    currentPos = target
+                                    triggerCenterBadge("⏪ 10s")
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Replay10,
+                                    contentDescription = "Rewind 10s",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.65f),
+                            border = BorderStroke(2.dp, MxBlue),
+                            modifier = Modifier
+                                .size(72.dp)
                                 .clickable {
                                     val vv = videoViewRef ?: return@clickable
                                     if (isCompleted) {
@@ -1458,25 +1323,51 @@ fun VideoPlayerScreen(
                                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                     contentDescription = if (isPlaying) "Pause" else "Play",
                                     tint = Color.White,
-                                    modifier = Modifier.size(38.dp)
+                                    modifier = Modifier.size(42.dp)
                                 )
                             }
                         }
 
                         Surface(
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.45f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                            color = Color.Black.copy(alpha = 0.50f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                             modifier = Modifier
-                                .size(50.dp)
+                                .size(54.dp)
                                 .clickable {
                                     val target = (currentPos + 10_000).coerceAtMost(duration.coerceAtLeast(1))
                                     videoViewRef?.seekTo(target)
                                     currentPos = target
+                                    triggerCenterBadge("⏩ 10s")
                                 }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(26.dp))
+                                Icon(
+                                    Icons.Default.Forward10,
+                                    contentDescription = "Forward 10s",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+
+                        if (videoState.playlist.size > 1) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.45f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clickable { viewModel.playNextVideo() }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.SkipNext,
+                                        contentDescription = "Next Video",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1560,13 +1451,19 @@ fun VideoPlayerScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Row 2: MX Player Classic Bottom Transport & Utility Bar
+                    // Row 2: Clean Modern Professional Bottom Action Bar (Only Necessary Functions)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Left: Lock Screen & Orientation Toggles
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             IconButton(
                                 onClick = {
                                     isLocked = true
@@ -1574,9 +1471,16 @@ fun VideoPlayerScreen(
                                     showLockOverlayHint = true
                                     triggerCenterBadge("🔒 Controls Locked")
                                 },
-                                modifier = Modifier.testTag("lock_controls_button")
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .testTag("lock_controls_button")
                             ) {
-                                Icon(Icons.Default.LockOpen, contentDescription = "Lock Screen", tint = Color.White, modifier = Modifier.size(22.dp))
+                                Icon(
+                                    Icons.Default.LockOpen,
+                                    contentDescription = "Lock Screen",
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
 
                             IconButton(
@@ -1591,117 +1495,61 @@ fun VideoPlayerScreen(
                                         triggerCenterBadge(if (isLandscape) "Portrait Mode" else "Landscape Mode")
                                     }
                                 },
-                                modifier = Modifier.testTag("rotate_screen_button")
-                            ) {
-                                Icon(Icons.Default.ScreenRotation, contentDescription = "Rotate Screen", tint = Color.White, modifier = Modifier.size(22.dp))
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            IconButton(onClick = { viewModel.playPreviousVideo() }) {
-                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous Video", tint = Color.White, modifier = Modifier.size(28.dp))
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    val target = (currentPos - 10_000).coerceAtLeast(0)
-                                    videoViewRef?.seekTo(target)
-                                    currentPos = target
-                                }
-                            ) {
-                                Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(25.dp))
-                            }
-
-                            Surface(
-                                shape = CircleShape,
-                                color = MxBlue,
                                 modifier = Modifier
-                                    .size(48.dp)
-                                    .clickable {
-                                        val vv = videoViewRef ?: return@clickable
-                                        if (isCompleted) {
-                                            vv.seekTo(0)
-                                            vv.start()
-                                            isPlaying = true
-                                            isCompleted = false
-                                        } else if (vv.isPlaying) {
-                                            vv.pause()
-                                            isPlaying = false
-                                        } else {
-                                            vv.start()
-                                            isPlaying = true
-                                        }
-                                    }
+                                    .size(42.dp)
+                                    .testTag("rotate_screen_button")
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                        contentDescription = if (isPlaying) "Pause" else "Play",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(28.dp)
+                                Icon(
+                                    Icons.Default.ScreenRotation,
+                                    contentDescription = "Rotate Screen",
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            if (isSubtitlesEnabled) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MxBlue.copy(alpha = 0.25f),
+                                    border = BorderStroke(0.8.dp, MxBlue),
+                                    modifier = Modifier.clickable { showSubtitleSheet = true }
+                                ) {
+                                    Text(
+                                        text = "CC",
+                                        color = MxCyan,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
                             }
-
-                            IconButton(
-                                onClick = {
-                                    val target = (currentPos + 10_000).coerceAtMost(duration.coerceAtLeast(1))
-                                    videoViewRef?.seekTo(target)
-                                    currentPos = target
-                                }
-                            ) {
-                                Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(25.dp))
-                            }
-
-                            IconButton(onClick = { viewModel.playNextVideo() }) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "Next Video", tint = Color.White, modifier = Modifier.size(28.dp))
-                            }
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        try {
-                                            val w = videoWidth.coerceAtLeast(1)
-                                            val h = videoHeight.coerceAtLeast(1)
-                                            val ratio = w.toFloat() / h.toFloat()
-                                            val safeRational = if (ratio in 0.42f..2.38f) {
-                                                Rational(w, h)
-                                            } else {
-                                                Rational(16, 9)
-                                            }
-                                            val paramsBuilder = PictureInPictureParams.Builder()
-                                                .setAspectRatio(safeRational)
-                                            activity?.enterPictureInPictureMode(paramsBuilder.build())
-                                        } catch (_: Exception) {
-                                            viewModel.showMessage("PiP mode activated")
-                                        }
-                                    } else {
-                                        viewModel.showMessage("PiP requires Android 8.0+")
-                                    }
-                                }
-                            ) {
-                                Icon(Icons.Default.PictureInPictureAlt, contentDescription = "Picture in Picture", tint = Color.White, modifier = Modifier.size(22.dp))
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    val values = VideoAspectRatio.values()
-                                    val nextIdx = (aspectRatio.ordinal + 1) % values.size
-                                    aspectRatio = values[nextIdx]
-                                    triggerCenterBadge("⛶ ${aspectRatio.title}")
-                                },
-                                modifier = Modifier.testTag("aspect_ratio_button")
+                        // Right: Single Clean Pro "Controls" Action Pill
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color.White.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                            modifier = Modifier
+                                .clickable { showPowerfulPlaybackSheet = true }
+                                .testTag("pro_controls_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.AspectRatio,
-                                    contentDescription = "Aspect Ratio",
-                                    tint = if (aspectRatio != VideoAspectRatio.FIT) MxBlue else Color.White,
-                                    modifier = Modifier.size(22.dp)
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Controls",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Controls",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
@@ -1712,7 +1560,7 @@ fun VideoPlayerScreen(
     }
 
     // =========================================================================
-    // 8. MX PLAYER PRO TOOLS & PLAYBACK SETTINGS SHEET
+    // 8. MODERN MEDIA CONTROL CENTER BOTTOM SHEET (All Secondary Features Here)
     // =========================================================================
     if (showPowerfulPlaybackSheet) {
         ModalBottomSheet(
@@ -1724,10 +1572,12 @@ fun VideoPlayerScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1735,15 +1585,15 @@ fun VideoPlayerScreen(
                 ) {
                     Column {
                         Text(
-                            text = "MX Pro Playback Controls",
+                            text = "Media Control Center",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = "${videoWidth}×${videoHeight} • ${decoderMode.desc}",
+                            text = "${videoWidth}×${videoHeight} • $resolutionBadge • ${decoderMode.desc}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.6f)
+                            color = Color.White.copy(alpha = 0.65f)
                         )
                     }
                     Surface(
@@ -1760,6 +1610,143 @@ fun VideoPlayerScreen(
                     }
                 }
 
+                // 1. Aspect Ratio Selector
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Aspect Ratio",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = aspectRatio.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MxCyan,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(VideoAspectRatio.values()) { ratio ->
+                            val selected = aspectRatio == ratio
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (selected) MxBlue else MxCardDark,
+                                border = BorderStroke(1.dp, if (selected) MxBlue else Color.White.copy(alpha = 0.15f)),
+                                modifier = Modifier
+                                    .clickable {
+                                        aspectRatio = ratio
+                                        triggerCenterBadge("⛶ ${ratio.title}")
+                                    }
+                                    .testTag("aspect_ratio_${ratio.name}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AspectRatio,
+                                        contentDescription = null,
+                                        tint = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = ratio.badge,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Playback Speed Selector
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Playback Speed",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "${playbackSpeed}x",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MxAmber,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    val speedPresets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(speedPresets) { spd ->
+                            val selected = abs(playbackSpeed - spd) < 0.02f
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (selected) MxAmber else MxCardDark,
+                                border = BorderStroke(1.dp, if (selected) MxAmber else Color.White.copy(alpha = 0.15f)),
+                                modifier = Modifier
+                                    .clickable {
+                                        playbackSpeed = spd
+                                        triggerCenterBadge("Speed: ${spd}x")
+                                    }
+                                    .testTag("speed_${spd}x")
+                            ) {
+                                Text(
+                                    text = if (spd == 1.0f) "1.0x (Normal)" else "${spd}x",
+                                    color = if (selected) Color.Black else Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MxCardDark,
+                                border = BorderStroke(1.dp, MxBlue.copy(alpha = 0.5f)),
+                                modifier = Modifier.clickable {
+                                    showPowerfulPlaybackSheet = false
+                                    showSpeedSheet = true
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Tune, contentDescription = null, tint = MxCyan, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        text = "Custom...",
+                                        color = MxCyan,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Audio, Subtitle & Timer Primary Cards
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PowerfulCard(
                         title = "Subtitle (CC)",
@@ -1773,90 +1760,13 @@ fun VideoPlayerScreen(
                         modifier = Modifier.weight(1f)
                     )
                     PowerfulCard(
-                        title = "5-Band EQ",
+                        title = "5-Band EQ & Boost",
                         subtitle = "$volumePercent% • $selectedEqualizerPreset",
                         icon = Icons.Default.Equalizer,
                         tint = if (volumePercent > 100) MxAmber else MxBlue,
                         onClick = {
                             showPowerfulPlaybackSheet = false
                             showAudioBoostSheet = true
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerfulCard(
-                        title = "Speed",
-                        subtitle = "${playbackSpeed}x",
-                        icon = Icons.Default.Speed,
-                        tint = MxBlue,
-                        onClick = {
-                            showPowerfulPlaybackSheet = false
-                            showSpeedSheet = true
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PowerfulCard(
-                        title = "Mirror Video",
-                        subtitle = if (isMirrored) "Flipped" else "Normal",
-                        icon = Icons.Default.Flip,
-                        tint = if (isMirrored) MxBlue else Color.White,
-                        onClick = {
-                            isMirrored = !isMirrored
-                            showPowerfulPlaybackSheet = false
-                            triggerCenterBadge(if (isMirrored) "⇄ Video Mirrored" else "⇄ Normal Orientation")
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerfulCard(
-                        title = "Night Filter",
-                        subtitle = if (isNightMode) "On" else "Off",
-                        icon = Icons.Default.DarkMode,
-                        tint = if (isNightMode) MxAmber else Color.White,
-                        onClick = {
-                            isNightMode = !isNightMode
-                            showPowerfulPlaybackSheet = false
-                            triggerCenterBadge(if (isNightMode) "🌙 Night Filter ON" else "Night Filter OFF")
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerfulCard(
-                        title = "Private Folder",
-                        subtitle = "Move to Vault",
-                        icon = Icons.Default.EnhancedEncryption,
-                        tint = MxCyan,
-                        onClick = {
-                            showPowerfulPlaybackSheet = false
-                            if (file != null) {
-                                viewModel.addFileToVault(FileItem(file))
-                                viewModel.showMessage("Video moved to Private Vault!")
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PowerfulCard(
-                        title = "Center Buttons",
-                        subtitle = if (showCenterTransport) "Visible" else "Hidden (Clean)",
-                        icon = Icons.Default.ControlCamera,
-                        tint = if (showCenterTransport) MxBlue else Color.White,
-                        onClick = {
-                            showCenterTransport = !showCenterTransport
-                            showPowerfulPlaybackSheet = false
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerfulCard(
-                        title = "Quick Toolbar",
-                        subtitle = if (showQuickRibbon) "Shown" else "Collapsed",
-                        icon = Icons.Default.ViewStream,
-                        tint = if (showQuickRibbon) MxBlue else Color.White,
-                        onClick = {
-                            showQuickRibbon = !showQuickRibbon
-                            showPowerfulPlaybackSheet = false
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -1873,6 +1783,102 @@ fun VideoPlayerScreen(
                     )
                 }
 
+                // 4. Viewing Tools Row
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PowerfulCard(
+                        title = "Night Filter",
+                        subtitle = if (isNightMode) "Warm Shield ON" else "Off",
+                        icon = Icons.Default.DarkMode,
+                        tint = if (isNightMode) MxAmber else Color.White,
+                        onClick = {
+                            isNightMode = !isNightMode
+                            showPowerfulPlaybackSheet = false
+                            triggerCenterBadge(if (isNightMode) "🌙 Night Filter ON" else "Night Filter OFF")
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    PowerfulCard(
+                        title = "Mirror Video",
+                        subtitle = if (isMirrored) "Flipped" else "Normal",
+                        icon = Icons.Default.Flip,
+                        tint = if (isMirrored) MxBlue else Color.White,
+                        onClick = {
+                            isMirrored = !isMirrored
+                            showPowerfulPlaybackSheet = false
+                            triggerCenterBadge(if (isMirrored) "⇄ Video Mirrored" else "⇄ Normal Orientation")
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    PowerfulCard(
+                        title = "Center Buttons",
+                        subtitle = if (showCenterTransport) "Visible" else "Hidden (Clean)",
+                        icon = Icons.Default.ControlCamera,
+                        tint = if (showCenterTransport) MxBlue else Color.White,
+                        onClick = {
+                            showCenterTransport = !showCenterTransport
+                            showPowerfulPlaybackSheet = false
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // 5. Hardware Decoder Selector
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MxCardDark,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Hardware Decoder",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            MxDecoderMode.values().forEach { mode ->
+                                val selected = decoderMode == mode
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (selected) MxBlue else Color.White.copy(alpha = 0.08f),
+                                    border = BorderStroke(1.dp, if (selected) MxBlue else Color.Transparent),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            decoderMode = mode
+                                            triggerCenterBadge("Decoder: ${mode.label}")
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = mode.label,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White,
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = if (mode == MxDecoderMode.HW_PLUS) "HW+" else if (mode == MxDecoderMode.HW) "HW" else "SW",
+                                            fontSize = 10.sp,
+                                            color = Color.White.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6. Background Audio Play Switch Card
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MxCardDark,
@@ -1912,6 +1918,43 @@ fun VideoPlayerScreen(
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = MxBlue)
                         )
+                    }
+                }
+
+                // 7. Private Folder Vault Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MxCardDark,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showPowerfulPlaybackSheet = false
+                            if (file != null) {
+                                viewModel.addFileToVault(FileItem(file))
+                                viewModel.showMessage("Video moved to Private Vault!")
+                            }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(MxCyan.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.EnhancedEncryption, contentDescription = null, tint = MxCyan, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Move to Private Vault", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Secure this video with biometric / PIN encryption", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
                     }
                 }
             }
