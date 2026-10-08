@@ -272,6 +272,60 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                // Word Documents (.docx, .doc)
+                lowerName.endsWith(".docx") || lowerName.endsWith(".doc") || lowerMime.contains("wordprocessingml") || lowerMime.contains("msword") -> {
+                    if (uri.scheme == "file" && uri.path != null && java.io.File(uri.path!!).exists()) {
+                        viewModel.openWordFile(java.io.File(uri.path!!))
+                    } else {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                val safeName = java.io.File(displayName).name.ifEmpty { "doc_${System.currentTimeMillis()}.docx" }
+                                val cacheFile = java.io.File(cacheDir, safeName).apply {
+                                    parentFile?.mkdirs()
+                                    contentResolver.openInputStream(uri)?.use { input ->
+                                        outputStream().use { output -> input.copyTo(output) }
+                                    }
+                                }
+                                withContext(Dispatchers.Main) {
+                                    if (cacheFile.exists()) {
+                                        viewModel.openWordFile(cacheFile)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    viewModel.showMessage("Failed to open Word doc: ${e.localizedMessage}")
+                                }
+                            }
+                        }
+                    }
+                }
+                // Excel Spreadsheets (.xlsx, .xls, .csv)
+                lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv") || lowerMime.contains("spreadsheetml") || lowerMime.contains("ms-excel") || lowerMime.contains("csv") -> {
+                    if (uri.scheme == "file" && uri.path != null && java.io.File(uri.path!!).exists()) {
+                        viewModel.openExcelFile(java.io.File(uri.path!!))
+                    } else {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                val safeName = java.io.File(displayName).name.ifEmpty { "sheet_${System.currentTimeMillis()}.xlsx" }
+                                val cacheFile = java.io.File(cacheDir, safeName).apply {
+                                    parentFile?.mkdirs()
+                                    contentResolver.openInputStream(uri)?.use { input ->
+                                        outputStream().use { output -> input.copyTo(output) }
+                                    }
+                                }
+                                withContext(Dispatchers.Main) {
+                                    if (cacheFile.exists()) {
+                                        viewModel.openExcelFile(cacheFile)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    viewModel.showMessage("Failed to open Spreadsheet: ${e.localizedMessage}")
+                                }
+                            }
+                        }
+                    }
+                }
                 // Multi-Format Archives (ZIP, 7Z, RAR, TAR, GZ, TGZ)
                 lowerName.endsWith(".zip") || lowerName.endsWith(".7z") || lowerName.endsWith(".rar") ||
                 lowerName.endsWith(".tar") || lowerName.endsWith(".gz") || lowerName.endsWith(".tgz") ||
@@ -518,6 +572,8 @@ fun CtMainApp(viewModel: ExplorerViewModel) {
                 Screen.TIME_MACHINE -> TimeMachineScreen(viewModel = viewModel)
                 Screen.APP_INSTALLER -> AppInstallerScreen(viewModel = viewModel)
                 Screen.DIAGNOSTICS -> DiagnosticScreen(viewModel = viewModel)
+                Screen.WORD_VIEWER -> WordViewerScreen(viewModel = viewModel)
+                Screen.EXCEL_VIEWER -> ExcelViewerScreen(viewModel = viewModel)
             }
         }
 

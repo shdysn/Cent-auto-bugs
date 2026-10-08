@@ -47,6 +47,16 @@ data class PdfViewerState(
     val title: String = ""
 )
 
+data class WordViewerState(
+    val file: File? = null,
+    val title: String = ""
+)
+
+data class ExcelViewerState(
+    val file: File? = null,
+    val title: String = ""
+)
+
 data class VideoPlayerState(
     val file: File? = null,
     val title: String = "",
@@ -292,6 +302,14 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     // PDF Viewer State
     private val _pdfViewerState = MutableStateFlow(PdfViewerState())
     val pdfViewerState: StateFlow<PdfViewerState> = _pdfViewerState.asStateFlow()
+
+    // Word Viewer State
+    private val _wordViewerState = MutableStateFlow(WordViewerState())
+    val wordViewerState: StateFlow<WordViewerState> = _wordViewerState.asStateFlow()
+
+    // Excel Viewer State
+    private val _excelViewerState = MutableStateFlow(ExcelViewerState())
+    val excelViewerState: StateFlow<ExcelViewerState> = _excelViewerState.asStateFlow()
 
     // Built-in Audio Player (Delegated to AudioPlayerViewModel)
     val audioPlayerState: StateFlow<AudioPlayerState> get() = audioPlayerViewModel.audioPlayerState
@@ -1634,6 +1652,26 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     }
 
     // ==========================================
+    // WORD & EXCEL VIEWER METHODS
+    // ==========================================
+
+    fun openWordFile(file: File) {
+        _wordViewerState.value = WordViewerState(
+            file = file,
+            title = file.name
+        )
+        navigateToScreen(Screen.WORD_VIEWER)
+    }
+
+    fun openExcelFile(file: File) {
+        _excelViewerState.value = ExcelViewerState(
+            file = file,
+            title = file.name
+        )
+        navigateToScreen(Screen.EXCEL_VIEWER)
+    }
+
+    // ==========================================
     // BUILT-IN AUDIO PLAYER METHODS (Delegated to AudioPlayerViewModel)
     // ==========================================
 
@@ -1707,9 +1745,17 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
         val ext = item.extension.lowercase()
 
-        // 1. PDF Documents
+        // 1. Documents (PDF, Word, Excel, CSV)
         if (ext == "pdf") {
             openPdfFile(item.file)
+            return true
+        }
+        if (ext in listOf("docx", "doc")) {
+            openWordFile(item.file)
+            return true
+        }
+        if (ext in listOf("xlsx", "xls", "csv")) {
+            openExcelFile(item.file)
             return true
         }
 
