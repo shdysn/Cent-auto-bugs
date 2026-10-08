@@ -589,6 +589,87 @@ fun AddNetworkDriveDialog(
                     }
                 }
 
+                // WebDAV Smart Presets (Nextcloud, ownCloud, Synology, QNAP, Yandex, etc.)
+                if (protocol == DriveProtocol.WEBDAV) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CtOrange.copy(alpha = 0.08f))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "⚡ WebDAV Quick Presets:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = CtOrange
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Nextcloud preset
+                            SuggestionChip(
+                                onClick = {
+                                    if (name.isBlank()) name = "Nextcloud"
+                                    port = "443"
+                                    path = if (username.isNotBlank()) "/remote.php/dav/files/$username/" else "/remote.php/dav/files/"
+                                },
+                                label = { Text("Nextcloud", fontSize = 11.sp) }
+                            )
+                            // ownCloud preset
+                            SuggestionChip(
+                                onClick = {
+                                    if (name.isBlank()) name = "ownCloud"
+                                    port = "443"
+                                    path = "/remote.php/webdav/"
+                                },
+                                label = { Text("ownCloud", fontSize = 11.sp) }
+                            )
+                            // Synology NAS preset
+                            SuggestionChip(
+                                onClick = {
+                                    if (name.isBlank()) name = "Synology NAS"
+                                    port = "5006"
+                                    path = "/"
+                                },
+                                label = { Text("Synology (5006)", fontSize = 11.sp) }
+                            )
+                            // QNAP NAS preset
+                            SuggestionChip(
+                                onClick = {
+                                    if (name.isBlank()) name = "QNAP NAS"
+                                    port = "8081"
+                                    path = "/"
+                                },
+                                label = { Text("QNAP (8081)", fontSize = 11.sp) }
+                            )
+                            // Yandex Disk preset
+                            SuggestionChip(
+                                onClick = {
+                                    if (name.isBlank()) name = "Yandex Disk"
+                                    host = "webdav.yandex.com"
+                                    port = "443"
+                                    path = "/"
+                                },
+                                label = { Text("Yandex Disk", fontSize = 11.sp) }
+                            )
+                            // InfiniCLOUD preset
+                            SuggestionChip(
+                                onClick = {
+                                    if (name.isBlank()) name = "InfiniCLOUD"
+                                    port = "443"
+                                    path = "/dav/"
+                                },
+                                label = { Text("InfiniCLOUD", fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
