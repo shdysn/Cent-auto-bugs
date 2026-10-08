@@ -1,7 +1,9 @@
 package com.ct.explorer.ui.screens
 
 import android.app.Activity
+import android.os.CancellationSignal
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.ct.explorer.utils.BiometricHelper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,37 +67,57 @@ fun VaultScreen(vaultViewModel: VaultViewModel) {
     val isBiometricEnabled by vaultViewModel.isBiometricVaultEnabled.collectAsStateWithLifecycle()
     val isBiometricAvailable = remember { BiometricHelper.isBiometricAvailable(context) }
 
+    var activeCancellationSignal by remember { mutableStateOf<CancellationSignal?>(null) }
+    var isExiting by remember { mutableStateOf(false) }
+    var hasAutoPromptedOnEntry by rememberSaveable { mutableStateOf(false) }
+
     fun launchBiometricPrompt() {
+        if (isExiting) return
+        activeCancellationSignal?.cancel()
         val activity = context as? Activity ?: return
-        BiometricHelper.authenticate(
+        activeCancellationSignal = BiometricHelper.authenticate(
             activity = activity,
             onSuccess = {
+                activeCancellationSignal = null
                 vaultViewModel.unlockVaultWithBiometrics()
             },
             onError = { msg ->
+                activeCancellationSignal = null
                 pinError = msg
             },
             onNegativeButton = {
+                activeCancellationSignal = null
                 // Return to PIN
             }
         )
     }
 
-    LaunchedEffect(isPinSet, isUnlocked, isBiometricEnabled) {
-        if (isPinSet && !isUnlocked && isBiometricEnabled && isBiometricAvailable) {
+    // Auto-prompt ONLY once when opening the vault screen if it is locked
+    LaunchedEffect(Unit) {
+        if (!hasAutoPromptedOnEntry && isPinSet && !isUnlocked && isBiometricEnabled && isBiometricAvailable) {
+            hasAutoPromptedOnEntry = true
             launchBiometricPrompt()
         }
     }
 
+    fun handleExit() {
+        isExiting = true
+        activeCancellationSignal?.cancel()
+        activeCancellationSignal = null
+        vaultViewModel.lockVault()
+        vaultViewModel.handleBackPress()
+    }
+
     DisposableEffect(Unit) {
         onDispose {
+            activeCancellationSignal?.cancel()
+            activeCancellationSignal = null
             vaultViewModel.lockVault()
         }
     }
 
     BackHandler(enabled = true) {
-        vaultViewModel.lockVault()
-        vaultViewModel.handleBackPress()
+        handleExit()
     }
 
     Scaffold(
@@ -117,8 +139,7 @@ fun VaultScreen(vaultViewModel: VaultViewModel) {
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        vaultViewModel.lockVault()
-                        vaultViewModel.handleBackPress()
+                        handleExit()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }

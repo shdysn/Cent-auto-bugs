@@ -444,6 +444,11 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
             return NavigationManager.popBackStack()
         }
 
+        if (NavigationManager.getCurrentScreen() == Screen.VAULT) {
+            lockVault()
+            return NavigationManager.popBackStack()
+        }
+
         if (NavigationManager.getCurrentScreen() == Screen.NETWORK_DRIVES && _activeNetworkDrive.value != null) {
             if (!navigateUpRemoteFolder()) {
                 disconnectNetworkDrive()
