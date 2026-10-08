@@ -1,5 +1,6 @@
 package com.ct.explorer.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -47,6 +48,21 @@ fun SmartCollectionsScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf(ViewMode.GRID) }
 
+    BackHandler(enabled = true) {
+        if (activeCollectionWithFiles != null) {
+            viewModel.closeActiveCollection()
+        } else {
+            viewModel.closeActiveCollection()
+            viewModel.handleBackPress()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.closeActiveCollection()
+        }
+    }
+
     Scaffold(
         modifier = modifier.testTag("smart_collections_screen"),
         topBar = {
@@ -62,6 +78,7 @@ fun SmartCollectionsScreen(
                             if (activeCollectionWithFiles != null) {
                                 viewModel.closeActiveCollection()
                             } else {
+                                viewModel.closeActiveCollection()
                                 viewModel.handleBackPress()
                             }
                         },

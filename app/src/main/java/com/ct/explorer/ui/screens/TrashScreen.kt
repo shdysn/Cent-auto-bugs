@@ -1,5 +1,6 @@
 package com.ct.explorer.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -39,6 +40,14 @@ fun TrashScreen(
 
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
     var itemToDeletePermanently by remember { mutableStateOf<TrashItem?>(null) }
+
+    BackHandler(enabled = true) {
+        if (isSelectionMode) {
+            selectedItems = emptySet()
+        } else {
+            viewModel.handleBackPress()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadTrashItems()

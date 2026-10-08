@@ -435,6 +435,15 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
             return false
         }
 
+        if (NavigationManager.getCurrentScreen() == Screen.SMART_COLLECTIONS) {
+            if (activeCollectionFiles.value != null) {
+                closeActiveCollection()
+                return true
+            }
+            closeActiveCollection()
+            return NavigationManager.popBackStack()
+        }
+
         if (NavigationManager.getCurrentScreen() == Screen.NETWORK_DRIVES && _activeNetworkDrive.value != null) {
             if (!navigateUpRemoteFolder()) {
                 disconnectNetworkDrive()
@@ -2220,6 +2229,7 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     // ==========================================
 
     fun openSmartCollections() {
+        closeActiveCollection()
         navigateToScreen(Screen.SMART_COLLECTIONS)
         loadSmartCollections()
     }
