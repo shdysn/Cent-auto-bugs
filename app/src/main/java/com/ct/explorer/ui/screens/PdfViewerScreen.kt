@@ -5,6 +5,7 @@ import android.graphics.Color as AndroidColor
 import android.graphics.pdf.PdfRenderer
 import android.os.Environment
 import android.os.ParcelFileDescriptor
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -69,28 +70,49 @@ fun PdfViewerScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val renderedPages = remember { mutableStateMapOf<Int, Bitmap>() }
 
+    BackHandler {
+        viewModel.handleBackPress()
+    }
+
     // PDF Pro Toolkit States
-    var isNightInvertMode by remember { mutableStateOf(false) }
+    var pdfReadingTheme by remember { mutableStateOf(0) } // 0 = Day, 1 = Sepia, 2 = Night
     var showThumbnailBar by remember { mutableStateOf(true) }
     var showJumpPageDialog by remember { mutableStateOf(false) }
     var jumpPageInput by remember { mutableStateOf("") }
 
     val listState = rememberLazyListState()
 
-    // ColorMatrix for Night / Inverted Reading Mode
-    val invertColorFilter = remember(isNightInvertMode) {
-        if (isNightInvertMode) {
-            ColorFilter.colorMatrix(
-                ColorMatrix(
-                    floatArrayOf(
-                        -0.88f, 0f, 0f, 0f, 240f,
-                        0f, -0.88f, 0f, 0f, 240f,
-                        0f, 0f, -0.85f, 0f, 245f,
-                        0f, 0f, 0f, 1f, 0f
+    // ColorFilter for Reading Modes (Day = None, Sepia = Warm Amber, Night = Inverted Dark)
+    val pageColorFilter = remember(pdfReadingTheme) {
+        when (pdfReadingTheme) {
+            1 -> {
+                // Sepia / Warm Paper Matrix
+                ColorFilter.colorMatrix(
+                    ColorMatrix(
+                        floatArrayOf(
+                            0.90f, 0.05f, 0.05f, 0f, 25f,
+                            0.05f, 0.85f, 0.05f, 0f, 15f,
+                            0.02f, 0.02f, 0.70f, 0f, -10f,
+                            0f, 0f, 0f, 1f, 0f
+                        )
                     )
                 )
-            )
-        } else null
+            }
+            2 -> {
+                // Night / AMOLED Inverted Matrix
+                ColorFilter.colorMatrix(
+                    ColorMatrix(
+                        floatArrayOf(
+                            -0.88f, 0f, 0f, 0f, 240f,
+                            0f, -0.88f, 0f, 0f, 240f,
+                            0f, 0f, -0.85f, 0f, 245f,
+                            0f, 0f, 0f, 1f, 0f
+                        )
+                    )
+                )
+            }
+            else -> null
+        }
     }
 
     // Zoom & pan state
@@ -198,8 +220,9 @@ fun PdfViewerScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (pageCount > 0) {
+                            val progressPercent = ((currentPageIndex + 1) * 100) / pageCount
                             Text(
-                                text = "Page ${currentPageIndex + 1} of $pageCount",
+                                text = "Page ${currentPageIndex + 1} of $pageCount • $progressPercent% read",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -221,13 +244,26 @@ fun PdfViewerScreen(
                         }
                     }
 
-                    // Night Reading Mode Toggle
-                    IconButton(onClick = { isNightInvertMode = !isNightInvertMode }) {
+                    // Reading Theme Toggle (Day, Sepia, Night)
+                    IconButton(onClick = { pdfReadingTheme = (pdfReadingTheme + 1) % 3 }) {
                         Icon(
-                            imageVector = Icons.Default.DarkMode,
-                            contentDescription = "Night Reading Mode",
-                            tint = if (isNightInvertMode) CtOrange else MaterialTheme.colorScheme.onSurface
+                            imageVector = when (pdfReadingTheme) {
+                                1 -> Icons.Default.MenuBook
+                                2 -> Icons.Default.DarkMode
+                                else -> Icons.Default.LightMode
+                            },
+                            contentDescription = "Switch Reading Theme",
+                            tint = if (pdfReadingTheme != 0) CtOrange else MaterialTheme.colorScheme.onSurface
                         )
+                    }
+
+                    // Open in External App (Adobe Reader / Google Drive)
+                    if (file != null) {
+                        IconButton(onClick = {
+                            FileOpener.openWithChooser(context, FileItem(file))
+                        }) {
+                            Icon(Icons.Default.OpenInNew, contentDescription = "Open in External PDF Viewer")
+                        }
                     }
 
                     // Export Current Page as Image
@@ -308,7 +344,7 @@ fun PdfViewerScreen(
                                         Image(
                                             bitmap = thumb.asImageBitmap(),
                                             contentDescription = "Thumb ${idx + 1}",
-                                            colorFilter = invertColorFilter,
+                                            colorFilter = pageColorFilter,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
                                         )
@@ -340,7 +376,13 @@ fun PdfViewerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(if (isNightInvertMode) Color(0xFF0F172A) else Color(0xFFE5E7EB))
+                .background(
+                    when (pdfReadingTheme) {
+                        1 -> Color(0xFFF4ECD8)
+                        2 -> Color(0xFF0F172A)
+                        else -> Color(0xFFE5E7EB)
+                    }
+                )
         ) {
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -350,7 +392,7 @@ fun PdfViewerScreen(
                         Text(
                             text = "Loading PDF document...",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (isNightInvertMode) Color.White else Color.DarkGray
+                            color = if (pdfReadingTheme == 2) Color.White else Color.DarkGray
                         )
                     }
                 }
@@ -409,13 +451,13 @@ fun PdfViewerScreen(
                                     .wrapContentHeight(),
                                 shape = RoundedCornerShape(8.dp),
                                 shadowElevation = 4.dp,
-                                color = if (isNightInvertMode) Color(0xFF1E293B) else Color.White
+                                color = if (pdfReadingTheme == 2) Color(0xFF1E293B) else if (pdfReadingTheme == 1) Color(0xFFFBF0D9) else Color.White
                             ) {
                                 if (bitmap != null) {
                                     Image(
                                         bitmap = bitmap.asImageBitmap(),
                                         contentDescription = "Page ${index + 1}",
-                                        colorFilter = invertColorFilter,
+                                        colorFilter = pageColorFilter,
                                         modifier = Modifier.fillMaxWidth(),
                                         contentScale = ContentScale.FillWidth
                                     )
@@ -534,9 +576,9 @@ private suspend fun renderSinglePage(
     try {
         synchronized(renderer) {
             val page = renderer.openPage(index)
-            val scaleFactor = 1.3f
-            val destWidth = (page.width * scaleFactor).toInt().coerceAtMost(1080)
-            val destHeight = (page.height * scaleFactor).toInt().coerceAtMost(1600)
+            val scaleFactor = 1.8f
+            val destWidth = (page.width * scaleFactor).toInt().coerceAtMost(1440)
+            val destHeight = (page.height * scaleFactor).toInt().coerceAtMost(2160)
 
             val bitmap = Bitmap.createBitmap(destWidth, destHeight, Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bitmap)
