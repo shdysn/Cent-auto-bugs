@@ -1,0 +1,27 @@
+package com.ct.explorer.core.navigation
+
+enum class Screen {
+    MAIN,
+    CLEANER,
+    FTP_SERVER,
+    CATEGORY_VIEW,
+    TEXT_EDITOR,
+    IMAGE_VIEWER,
+    APP_MANAGER,
+    VAULT,
+    DUPLICATES,
+    STORAGE_ANALYZER,
+    ZIP_VIEWER,
+    TRASH,
+    PDF_VIEWER,
+    VIDEO_PLAYER,
+    NETWORK_DRIVES,
+    FAST_SHARE,
+    SOCIAL_HUB,
+    WEB_SHARE,
+    FILE_SHREDDER,
+    SMART_COLLECTIONS,
+    TIME_MACHINE,
+    APP_INSTALLER,
+    DIAGNOSTICS
+}

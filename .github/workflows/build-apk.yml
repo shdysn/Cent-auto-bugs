@@ -1,0 +1,120 @@
+name: Build and Release Android App
+
+on:
+  push:
+    branches: [ "**" ]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  checks: write
+  packages: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  build:
+    name: Build Release APK and AAB
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Accept Android SDK Licenses
+        run: |
+          mkdir -p "$ANDROID_HOME/licenses"
+          echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradlew Executable
+        run: chmod +x ./gradlew
+
+      - name: Ensure Debug Keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Release APK and AAB Bundle
+        run: |
+          ./gradlew assembleRelease bundleRelease --stacktrace --no-daemon
+
+      - name: Verify Release APK Size Budget (2 MB - 3 MB Target)
+        run: |
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::Release APK not found at $APK_PATH"
+            exit 1
+          fi
+
+          APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
+          # Budget: 2.0 MB (2,000,000 bytes) to 3.0 MB (3,145,728 bytes)
+          MIN_BYTES=2000000
+          MAX_BYTES=3145728
+
+          APK_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $APK_SIZE_BYTES/1048576}")
+          echo "=========================================="
+          echo "Release APK Size: ${APK_SIZE_MB} MB (${APK_SIZE_BYTES} bytes)"
+          echo "Target Budget   : 2.00 MB - 3.00 MB"
+          echo "=========================================="
+
+          echo "### 📦 Release APK Size Verification (2 MB - 3 MB Target)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Range:** 2.00 MB – 3.00 MB" >> $GITHUB_STEP_SUMMARY
+          echo "- **Actual Size:** **${APK_SIZE_MB} MB** (${APK_SIZE_BYTES} bytes)" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$APK_SIZE_BYTES" -gt "$MAX_BYTES" ]; then
+            echo "::error::Release APK size (${APK_SIZE_MB} MB) EXCEEDS the 3.0 MB target limit!"
+            echo "- ❌ **FAILED:** APK size exceeds 3.0 MB. Review app/build.gradle.kts and proguard-rules.pro to eliminate bloat." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          elif [ "$APK_SIZE_BYTES" -lt "$MIN_BYTES" ]; then
+            echo "::warning::Release APK size (${APK_SIZE_MB} MB) is below 2.0 MB. Please verify all resources and icons are bundled."
+            echo "- ⚠️ **NOTICE:** APK size is below 2.0 MB. Verification passed, ensure all assets are included." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "::notice::Release APK size (${APK_SIZE_MB} MB) is strictly within the 2.0 MB - 3.0 MB target range!"
+            echo "- ✅ **PASSED:** Release APK size is within the 2.0 MB - 3.0 MB budget range." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Collect Release Binaries
+        run: |
+          mkdir -p build-artifacts
+          cp app/build/outputs/apk/release/app-release.apk build-artifacts/CentExplorer-v1.0.0-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab build-artifacts/CentExplorer-v1.0.0-release.aab
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CentExplorer-Production-Artifacts
+          path: build-artifacts/*
+          retention-days: 30
+
+      - name: Create or Update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Cent File Manager Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            build-artifacts/CentExplorer-v1.0.0-release.apk
+            build-artifacts/CentExplorer-v1.0.0-release.aab

@@ -1,0 +1,6 @@
+{
+  "name": "Cent File Manager",
+  "description": "Clean, modern, and high-performance file manager with recent files feed, categorized media, storage cleaner, and file browser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
