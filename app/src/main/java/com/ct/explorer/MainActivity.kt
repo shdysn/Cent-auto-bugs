@@ -133,12 +133,26 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // 0.5. Check Cloud OAuth 2.0 Web Redirect (ctexplorer://oauth-callback)
+        // 0.5. Check Cloud OAuth 2.0 Web Redirect (com.pkstudio.ctexplorer.app:/... or ctexplorer://oauth-callback)
         val dataUri = intent.data
-        if (dataUri != null && dataUri.scheme == "ctexplorer" && dataUri.host == "oauth-callback") {
+        if (dataUri != null && (dataUri.scheme == "com.pkstudio.ctexplorer.app" || dataUri.scheme == "ctexplorer")) {
             val token = com.ct.explorer.utils.CloudOAuthHelper.extractToken(dataUri)
+            val code = com.ct.explorer.utils.CloudOAuthHelper.extractCode(dataUri)
             if (!token.isNullOrBlank()) {
                 viewModel.connectGoogleDriveWithOAuthToken(token)
+            } else if (!code.isNullOrBlank()) {
+                viewModel.showMessage("Exchanging authorization code with Google...")
+                lifecycleScope.launch {
+                    val exchangeRes = com.ct.explorer.utils.CloudOAuthHelper.exchangeCodeForToken(code)
+                    exchangeRes.fold(
+                        onSuccess = { exchangedToken ->
+                            viewModel.connectGoogleDriveWithOAuthToken(exchangedToken)
+                        },
+                        onFailure = { err ->
+                            viewModel.showMessage("Google Token Exchange error: ${err.localizedMessage}")
+                        }
+                    )
+                }
             } else {
                 val err = com.ct.explorer.utils.CloudOAuthHelper.extractError(dataUri)
                 viewModel.showMessage("OAuth Response: ${err ?: "No authorization token received"}")

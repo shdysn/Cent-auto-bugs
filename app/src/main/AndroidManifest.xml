@@ -61,6 +61,14 @@
                 <data android:scheme="ctexplorer" android:host="oauth-callback" />
             </intent-filter>
 
+            <!-- Intent Filter: Google OAuth Android Custom Scheme (com.pkstudio.ctexplorer.app:/oauth2redirect) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.pkstudio.ctexplorer.app" />
+            </intent-filter>
+
             <!-- Intent Filter: Video Player (When opening video from any file manager, gallery, WhatsApp, browser) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
