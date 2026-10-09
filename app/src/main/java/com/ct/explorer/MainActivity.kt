@@ -550,14 +550,18 @@ fun CtMainApp(viewModel: ExplorerViewModel) {
     val audioPlayerState by viewModel.audioPlayerState.collectAsStateWithLifecycle()
     val apkInstallTarget by viewModel.apkInstallTarget.collectAsStateWithLifecycle()
     val isVideoScreen = currentScreen == Screen.VIDEO_PLAYER
+    val isFullscreenDocumentScreen = currentScreen == Screen.PDF_VIEWER ||
+        currentScreen == Screen.WORD_VIEWER ||
+        currentScreen == Screen.EXCEL_VIEWER
+    val isFullscreenScreen = isVideoScreen || isFullscreenDocumentScreen
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = if (isVideoScreen) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White,
-        contentWindowInsets = if (isVideoScreen) androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
+        contentWindowInsets = if (isFullscreenScreen) androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (audioPlayerState.isVisible && !isVideoScreen) {
+            if (audioPlayerState.isVisible && !isFullscreenScreen) {
                 CtMiniAudioBar(
                     state = audioPlayerState,
                     onExpand = { viewModel.toggleAudioExpanded() },
@@ -572,7 +576,7 @@ fun CtMainApp(viewModel: ExplorerViewModel) {
             targetState = currentScreen,
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (isVideoScreen) Modifier else Modifier.padding(innerPadding)),
+                .then(if (isFullscreenScreen) Modifier else Modifier.padding(innerPadding)),
             label = "CentScreenTransition"
         ) { screen ->
             when (screen) {

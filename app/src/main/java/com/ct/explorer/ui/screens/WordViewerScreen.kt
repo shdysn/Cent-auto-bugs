@@ -1,5 +1,6 @@
 package com.ct.explorer.ui.screens
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -10,6 +11,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,8 +29,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -38,6 +44,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ct.explorer.data.model.FileItem
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
@@ -48,6 +57,9 @@ import com.ct.explorer.utils.docx.DocxParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+val WordBlue = Color(0xFF2B579A)
+val WordBlueLight = Color(0xFFDBEAFE)
 
 enum class WordTheme(val title: String, val bg: Color, val cardBg: Color, val text: Color, val accent: Color) {
     PAPER("Crisp", Color(0xFFF1F5F9), Color(0xFFFFFFFF), Color(0xFF0F172A), Color(0xFF2563EB)),
@@ -62,6 +74,7 @@ fun WordViewerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val state by viewModel.wordViewerState.collectAsStateWithLifecycle()
     val file = state.file
@@ -69,6 +82,22 @@ fun WordViewerScreen(
     var document by remember { mutableStateOf<DocxDocument?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Fullscreen & Original Page View states (opens in fullscreen by default)
+    var isFullScreen by remember { mutableStateOf(true) }
+    var isOriginalPageView by remember { mutableStateOf(false) }
+
+    // Zoom & pan state for Original Page View
+    var pageScale by remember { mutableFloatStateOf(1f) }
+    var pageOffset by remember { mutableStateOf(Offset.Zero) }
+    val pageTransformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+        pageScale = (pageScale * zoomChange).coerceIn(0.75f, 3.0f)
+        if (pageScale != 1f) {
+            pageOffset += offsetChange
+        } else {
+            pageOffset = Offset.Zero
+        }
+    }
 
     // Reading preferences
     var readingTheme by remember { mutableStateOf(WordTheme.PAPER) }
@@ -78,6 +107,28 @@ fun WordViewerScreen(
     var showOutlineSheet by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
+    val originalPageListState = rememberLazyListState()
+
+    // Manage system bars for immersive fullscreen
+    LaunchedEffect(isFullScreen) {
+        val window = (context as? Activity)?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (isFullScreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            val window = (context as? Activity)?.window
+            if (window != null) {
+                WindowCompat.getInsetsController(window, view).show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     BackHandler {
         viewModel.handleBackPress()
@@ -108,136 +159,299 @@ fun WordViewerScreen(
     }
 
     Scaffold(
-        modifier = modifier.testTag("word_viewer_screen"),
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("word_viewer_screen"),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = Color(0xFF2B579A),
-                                shape = RoundedCornerShape(4.dp),
-                                modifier = Modifier.padding(end = 6.dp)
+            if (isFullScreen) {
+                // Compact Fullscreen Header Bar with Back button & Original Page View button
+                Surface(
+                    color = Color(0xFF0F172A).copy(alpha = 0.92f),
+                    tonalElevation = 6.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Back Button
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color.White.copy(alpha = 0.14f),
+                            modifier = Modifier
+                                .heightIn(min = 40.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { viewModel.handleBackPress() }
+                                .testTag("word_fullscreen_back_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "DOCX",
+                                    text = "Back",
                                     color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
-                            Text(
-                                text = state.title.ifEmpty { file?.name ?: "Word Document" },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
                         }
-                        document?.let { doc ->
-                            Text(
-                                text = "${doc.wordCount} words • ~${doc.estimatedReadMinutes} min read",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.handleBackPress() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Search toggle
-                    IconButton(onClick = { isSearchActive = !isSearchActive }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search in Document",
-                            tint = if (isSearchActive) Color(0xFF2B579A) else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
 
-                    // Theme selector (Paper, Sepia, Dark)
-                    IconButton(onClick = {
-                        readingTheme = when (readingTheme) {
-                            WordTheme.PAPER -> WordTheme.SEPIA
-                            WordTheme.SEPIA -> WordTheme.DARK
-                            WordTheme.DARK -> WordTheme.PAPER
+                        // Document Title in Center
+                        Text(
+                            text = state.title.ifEmpty { file?.name ?: "Word Document" },
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 10.dp)
+                        )
+
+                        // Original Page View Button + Exit Fullscreen Button
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isOriginalPageView) WordBlue else Color.White.copy(alpha = 0.16f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isOriginalPageView) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.25f)
+                                ),
+                                modifier = Modifier
+                                    .heightIn(min = 40.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        isOriginalPageView = !isOriginalPageView
+                                        pageScale = 1f
+                                        pageOffset = Offset.Zero
+                                    }
+                                    .testTag("word_original_page_view_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (isOriginalPageView) Icons.Default.ViewStream else Icons.Default.Description,
+                                        contentDescription = "Original Page View",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isOriginalPageView) "Original Page ✓" else "Original Page View",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { isFullScreen = false },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("word_exit_fullscreen_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FullscreenExit,
+                                    contentDescription = "Show Full Toolbar",
+                                    tint = Color.White
+                                )
+                            }
                         }
-                    }) {
-                        Icon(
-                            imageVector = when (readingTheme) {
-                                WordTheme.PAPER -> Icons.Default.LightMode
-                                WordTheme.SEPIA -> Icons.Default.MenuBook
-                                WordTheme.DARK -> Icons.Default.DarkMode
+                    }
+                }
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    color = WordBlue,
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.padding(end = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "DOCX",
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = state.title.ifEmpty { file?.name ?: "Word Document" },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            document?.let { doc ->
+                                Text(
+                                    text = "${doc.wordCount} words • ${if (isOriginalPageView) "Original Page View" else "~${doc.estimatedReadMinutes} min read"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = { viewModel.handleBackPress() },
+                            modifier = Modifier.testTag("word_toolbar_back_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        // Original Page View Toggle Chip in Toolbar
+                        FilterChip(
+                            selected = isOriginalPageView,
+                            onClick = {
+                                isOriginalPageView = !isOriginalPageView
+                                pageScale = 1f
+                                pageOffset = Offset.Zero
                             },
-                            contentDescription = "Switch Theme"
+                            label = {
+                                Text(
+                                    text = "Original Page",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Description,
+                                    contentDescription = "Original Page View",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = WordBlueLight,
+                                selectedLabelColor = WordBlue,
+                                selectedLeadingIconColor = WordBlue
+                            ),
+                            modifier = Modifier.padding(end = 4.dp)
                         )
-                    }
 
-                    // Font Size toggle
-                    IconButton(onClick = {
-                        fontSizeMultiplier = when (fontSizeMultiplier) {
-                            0.85f -> 1.0f
-                            1.0f -> 1.2f
-                            1.2f -> 1.4f
-                            else -> 0.85f
+                        // Fullscreen Toggle
+                        IconButton(onClick = { isFullScreen = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = "Fullscreen"
+                            )
                         }
-                    }) {
-                        Icon(Icons.Default.FormatSize, contentDescription = "Font Size")
-                    }
 
-                    // Table of Contents / Headings
-                    val headings = document?.elements?.filterIsInstance<DocxElement.Heading>().orEmpty()
-                    if (headings.isNotEmpty()) {
-                        IconButton(onClick = { showOutlineSheet = true }) {
-                            Icon(Icons.Default.ListAlt, contentDescription = "Table of Contents")
+                        // Search toggle
+                        IconButton(onClick = { isSearchActive = !isSearchActive }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search in Document",
+                                tint = if (isSearchActive) WordBlue else MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                    }
 
-                    // Print / Save as PDF
-                    if (file != null) {
+                        // Theme selector (Paper, Sepia, Dark)
+                        if (!isOriginalPageView) {
+                            IconButton(onClick = {
+                                readingTheme = when (readingTheme) {
+                                    WordTheme.PAPER -> WordTheme.SEPIA
+                                    WordTheme.SEPIA -> WordTheme.DARK
+                                    WordTheme.DARK -> WordTheme.PAPER
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = when (readingTheme) {
+                                        WordTheme.PAPER -> Icons.Default.LightMode
+                                        WordTheme.SEPIA -> Icons.Default.MenuBook
+                                        WordTheme.DARK -> Icons.Default.DarkMode
+                                    },
+                                    contentDescription = "Switch Theme"
+                                )
+                            }
+                        }
+
+                        // Font Size toggle
                         IconButton(onClick = {
-                            com.ct.explorer.utils.PrintHelper.printFile(context, file)
+                            fontSizeMultiplier = when (fontSizeMultiplier) {
+                                0.85f -> 1.0f
+                                1.0f -> 1.2f
+                                1.2f -> 1.4f
+                                else -> 0.85f
+                            }
                         }) {
-                            Icon(Icons.Default.Print, contentDescription = "Print / Save as PDF")
+                            Icon(Icons.Default.FormatSize, contentDescription = "Font Size")
                         }
-                    }
 
-                    // Open in External App (Office / Google Docs)
-                    if (file != null) {
-                        IconButton(onClick = {
-                            FileOpener.openWithChooser(context, FileItem(file))
-                        }) {
-                            Icon(Icons.Default.OpenInNew, contentDescription = "Open with External App")
+                        // Table of Contents / Headings
+                        val headings = document?.elements?.filterIsInstance<DocxElement.Heading>().orEmpty()
+                        if (headings.isNotEmpty()) {
+                            IconButton(onClick = { showOutlineSheet = true }) {
+                                Icon(Icons.Default.ListAlt, contentDescription = "Table of Contents")
+                            }
                         }
-                    }
 
-                    // Share file
-                    if (file != null) {
-                        IconButton(onClick = {
-                            FileOpener.shareFile(context, FileItem(file))
-                        }) {
-                            Icon(Icons.Default.Share, contentDescription = "Share")
+                        // Print / Save as PDF
+                        if (file != null) {
+                            IconButton(onClick = {
+                                com.ct.explorer.utils.PrintHelper.printFile(context, file)
+                            }) {
+                                Icon(Icons.Default.Print, contentDescription = "Print / Save as PDF")
+                            }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+
+                        // Open in External App (Office / Google Docs)
+                        if (file != null) {
+                            IconButton(onClick = {
+                                FileOpener.openWithChooser(context, FileItem(file))
+                            }) {
+                                Icon(Icons.Default.OpenInNew, contentDescription = "Open with External App")
+                            }
+                        }
+
+                        // Share file
+                        if (file != null) {
+                            IconButton(onClick = {
+                                FileOpener.shareFile(context, FileItem(file))
+                            }) {
+                                Icon(Icons.Default.Share, contentDescription = "Share")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+            }
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(readingTheme.bg)
+                .background(if (isOriginalPageView) Color(0xFFCBD5E1) else readingTheme.bg)
         ) {
             // Animated Search Bar
-            AnimatedVisibility(visible = isSearchActive) {
+            AnimatedVisibility(visible = isSearchActive && !isFullScreen) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 3.dp,
@@ -277,12 +491,12 @@ fun WordViewerScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Color(0xFF2B579A))
+                        CircularProgressIndicator(color = WordBlue)
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             text = "Loading Word document...",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = readingTheme.text
+                            color = if (isOriginalPageView) Color(0xFF1E293B) else readingTheme.text
                         )
                     }
                 }
@@ -326,7 +540,7 @@ fun WordViewerScreen(
                                     onClick = {
                                         if (file != null) FileOpener.openWithChooser(context, FileItem(file))
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B579A))
+                                    colors = ButtonDefaults.buttonColors(containerColor = WordBlue)
                                 ) {
                                     Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -349,8 +563,196 @@ fun WordViewerScreen(
                             color = readingTheme.text.copy(alpha = 0.6f)
                         )
                     }
+                } else if (isOriginalPageView) {
+                    // ORIGINAL PAGE VIEW (Authentic Microsoft Word A4/Letter Print Page Layout)
+                    val pages = remember(doc.elements) {
+                        doc.elements.chunked(28).ifEmpty { listOf(emptyList()) }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .transformable(state = pageTransformState)
+                    ) {
+                        LazyColumn(
+                            state = originalPageListState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(
+                                    scaleX = pageScale,
+                                    scaleY = pageScale,
+                                    translationX = pageOffset.x,
+                                    translationY = pageOffset.y
+                                ),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            itemsIndexed(pages) { pageIdx, pageElements ->
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = Color.White,
+                                    shadowElevation = 6.dp,
+                                    border = BorderStroke(1.dp, Color(0xFF94A3B8)),
+                                    modifier = Modifier
+                                        .widthIn(max = 680.dp)
+                                        .fillMaxWidth()
+                                        .heightIn(min = 520.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 24.dp, vertical = 28.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            if (pageIdx == 0) {
+                                                // Original Document Title on Page 1
+                                                Text(
+                                                    text = doc.title,
+                                                    fontSize = (24.sp * fontSizeMultiplier),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF1E3A8A)
+                                                )
+                                                HorizontalDivider(
+                                                    thickness = 1.5.dp,
+                                                    color = Color(0xFFCBD5E1),
+                                                    modifier = Modifier.padding(bottom = 6.dp)
+                                                )
+                                            }
+
+                                            pageElements.forEach { element ->
+                                                when (element) {
+                                                    is DocxElement.Heading -> {
+                                                        Column(modifier = Modifier.padding(top = 6.dp)) {
+                                                            Text(
+                                                                text = element.text,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = (when (element.level) {
+                                                                    1 -> 20.sp
+                                                                    2 -> 17.sp
+                                                                    else -> 15.sp
+                                                                }) * fontSizeMultiplier,
+                                                                color = when (element.level) {
+                                                                    1 -> Color(0xFF1E3A8A)
+                                                                    2 -> Color(0xFF1D4ED8)
+                                                                    else -> Color(0xFF0F172A)
+                                                                }
+                                                            )
+                                                            if (element.level == 1) {
+                                                                Spacer(modifier = Modifier.height(4.dp))
+                                                                HorizontalDivider(color = Color(0xFFE2E8F0))
+                                                            }
+                                                        }
+                                                    }
+
+                                                    is DocxElement.Paragraph -> {
+                                                        val annotated = buildAnnotatedString {
+                                                            if (element.isBullet) {
+                                                                withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))) {
+                                                                    append("    •  ")
+                                                                }
+                                                            }
+                                                            if (element.runs.isNotEmpty()) {
+                                                                for (run in element.runs) {
+                                                                    val isMatch = searchQuery.isNotBlank() &&
+                                                                        run.text.contains(searchQuery, ignoreCase = true)
+                                                                    val runColor = parseDocxHexColor(run.colorHex) ?: Color(0xFF0F172A)
+                                                                    withStyle(
+                                                                        SpanStyle(
+                                                                            fontWeight = if (run.isBold) FontWeight.Bold else FontWeight.Normal,
+                                                                            fontStyle = if (run.isItalic) FontStyle.Italic else FontStyle.Normal,
+                                                                            textDecoration = if (run.isUnderline) TextDecoration.Underline else null,
+                                                                            background = if (isMatch) Color(0xFFFEF08A) else Color.Transparent,
+                                                                            color = if (isMatch) Color.Black else runColor
+                                                                        )
+                                                                    ) {
+                                                                        append(run.text)
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                append(element.fullText)
+                                                            }
+                                                        }
+
+                                                        Text(
+                                                            text = annotated,
+                                                            fontSize = 14.sp * fontSizeMultiplier,
+                                                            lineHeight = 22.sp * fontSizeMultiplier,
+                                                            color = Color(0xFF0F172A)
+                                                        )
+                                                    }
+
+                                                    is DocxElement.Table -> {
+                                                        OriginalPageTableComponent(
+                                                            table = element,
+                                                            fontSizeMultiplier = fontSizeMultiplier
+                                                        )
+                                                    }
+
+                                                    DocxElement.Divider -> {
+                                                        HorizontalDivider(
+                                                            color = Color(0xFFCBD5E1),
+                                                            modifier = Modifier.padding(vertical = 8.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Original Page Footer
+                                        Column(modifier = Modifier.padding(top = 28.dp)) {
+                                            HorizontalDivider(color = Color(0xFFE2E8F0))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = doc.title,
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                                Text(
+                                                    text = "Page ${pageIdx + 1} of ${pages.size}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (pageScale != 1f) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.75f),
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(16.dp)
+                                    .clickable {
+                                        pageScale = 1f
+                                        pageOffset = Offset.Zero
+                                    }
+                            ) {
+                                Text(
+                                    text = "Reset Zoom (${(pageScale * 100).toInt()}%)",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
                 } else {
-                    // Document Paper Container
+                    // Document Reader Block Container
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -524,7 +926,7 @@ fun WordViewerScreen(
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFF2B579A))
+                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = WordBlue)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Document Outline",
@@ -548,7 +950,11 @@ fun WordViewerScreen(
                                 .clickable {
                                     val elementIndex = document?.elements?.indexOf(heading) ?: 0
                                     coroutineScope.launch {
-                                        listState.animateScrollToItem(elementIndex + 1)
+                                        if (isOriginalPageView) {
+                                            originalPageListState.animateScrollToItem(elementIndex / 28)
+                                        } else {
+                                            listState.animateScrollToItem(elementIndex + 1)
+                                        }
                                     }
                                     showOutlineSheet = false
                                 }
@@ -561,7 +967,7 @@ fun WordViewerScreen(
                                     text = "${index + 1}.",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2B579A),
+                                    color = WordBlue,
                                     modifier = Modifier.width(24.dp)
                                 )
                                 Text(
@@ -576,6 +982,62 @@ fun WordViewerScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+private fun parseDocxHexColor(hex: String?): Color? {
+    val clean = hex?.trim()?.removePrefix("#") ?: return null
+    if (clean.length != 6) return null
+    return try {
+        val rgb = clean.toLong(16)
+        Color(0xFF000000L or rgb)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@Composable
+private fun OriginalPageTableComponent(
+    table: DocxElement.Table,
+    fontSizeMultiplier: Float
+) {
+    val scrollState = rememberScrollState()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .horizontalScroll(scrollState)
+    ) {
+        Column(
+            modifier = Modifier.border(1.dp, Color(0xFF94A3B8))
+        ) {
+            table.rows.forEachIndexed { rowIndex, row ->
+                val isHeader = rowIndex == 0
+                Row(
+                    modifier = Modifier.background(
+                        if (isHeader) Color(0xFFEFF6FF)
+                        else if (rowIndex % 2 == 1) Color(0xFFF8FAFC)
+                        else Color.White
+                    )
+                ) {
+                    row.forEach { cellText ->
+                        Box(
+                            modifier = Modifier
+                                .widthIn(min = 100.dp, max = 220.dp)
+                                .border(0.5.dp, Color(0xFFCBD5E1))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = cellText,
+                                fontSize = 13.sp * fontSizeMultiplier,
+                                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                color = Color(0xFF0F172A)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
