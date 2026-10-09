@@ -112,4 +112,99 @@ class OfficeDocumentParserTest {
         assertTrue(paragraph?.runs?.get(0)?.isBold == true)
         assertFalse(paragraph?.runs?.get(1)?.isBold == true)
     }
+
+    @Test
+    fun testDocxPaginatorWithA4LetterAndLegalPaperSizes() {
+        // Create sample document with multiple paragraphs and a page break
+        val elements = listOf(
+            DocxElement.Heading("Title of Document", 1),
+            DocxElement.Paragraph(emptyList(), "Paragraph 1 line of introductory text."),
+            DocxElement.PageBreak,
+            DocxElement.Heading("Section 2 on New Page", 2),
+            DocxElement.Paragraph(emptyList(), "Paragraph 2 content following the page break.")
+        )
+        val doc = com.ct.explorer.utils.docx.DocxDocument(
+            title = "Test Print Doc",
+            elements = elements,
+            wordCount = 20,
+            characterCount = 120,
+            detectedPaperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            detectedOrientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+
+        // Test A4 pagination
+        val a4Pages = com.ct.explorer.utils.docx.DocxPaginator.paginate(
+            doc,
+            com.ct.explorer.utils.docx.PaperSize.A4,
+            com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertEquals(2, a4Pages.size)
+        assertEquals(1, a4Pages[0].pageNumber)
+        assertEquals(2, a4Pages[0].totalPages)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.A4, a4Pages[0].paperSize)
+        assertTrue(a4Pages[0].isFirstPage)
+        assertFalse(a4Pages[1].isFirstPage)
+        assertEquals(2, a4Pages[1].pageNumber)
+
+        // Test Letter pagination
+        val letterPages = com.ct.explorer.utils.docx.DocxPaginator.paginate(
+            doc,
+            com.ct.explorer.utils.docx.PaperSize.LETTER,
+            com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertEquals(2, letterPages.size)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.LETTER, letterPages[0].paperSize)
+
+        // Test Legal pagination
+        val legalPages = com.ct.explorer.utils.docx.DocxPaginator.paginate(
+            doc,
+            com.ct.explorer.utils.docx.PaperSize.LEGAL,
+            com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE
+        )
+        assertEquals(2, legalPages.size)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.LEGAL, legalPages[0].paperSize)
+        assertEquals(com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE, legalPages[0].orientation)
+
+        // Verify dimensions and aspect ratios
+        val a4RatioPort = com.ct.explorer.utils.docx.PaperSize.A4.widthToHeightRatio(com.ct.explorer.utils.docx.PageOrientation.PORTRAIT)
+        val a4RatioLand = com.ct.explorer.utils.docx.PaperSize.A4.widthToHeightRatio(com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE)
+        assertTrue(a4RatioPort < 1.0f) // 210 / 297 ≈ 0.707
+        assertTrue(a4RatioLand > 1.0f) // 297 / 210 ≈ 1.414
+
+        val letterRatioPort = com.ct.explorer.utils.docx.PaperSize.LETTER.widthToHeightRatio(com.ct.explorer.utils.docx.PageOrientation.PORTRAIT)
+        assertTrue(letterRatioPort in 0.76f..0.78f) // 8.5 / 11.0 ≈ 0.772
+
+        val legalRatioPort = com.ct.explorer.utils.docx.PaperSize.LEGAL.widthToHeightRatio(com.ct.explorer.utils.docx.PageOrientation.PORTRAIT)
+        assertTrue(legalRatioPort in 0.60f..0.62f) // 8.5 / 14.0 ≈ 0.607
+    }
+
+    @Test
+    fun testDocxPaginatorAutoOverflowsLongContent() {
+        // Create document with 50 paragraphs that should overflow into multiple pages
+        val elements = (1..60).map { i ->
+            DocxElement.Paragraph(
+                runs = emptyList(),
+                fullText = "Paragraph $i: This is a sufficiently long line of text intended to test pagination overflows across physical sheets of paper in standard office formats.",
+                isBullet = (i % 5 == 0)
+            )
+        }
+        val doc = com.ct.explorer.utils.docx.DocxDocument(
+            title = "Long Document",
+            elements = elements,
+            wordCount = elements.size * 25,
+            characterCount = elements.size * 150
+        )
+
+        val pages = com.ct.explorer.utils.docx.DocxPaginator.paginate(
+            doc,
+            com.ct.explorer.utils.docx.PaperSize.A4,
+            com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+
+        // Multiple physical pages generated
+        assertTrue(pages.size >= 2)
+        assertEquals(1, pages.first().pageNumber)
+        assertEquals(pages.size, pages.last().pageNumber)
+        assertEquals(pages.size, pages.first().totalPages)
+    }
 }

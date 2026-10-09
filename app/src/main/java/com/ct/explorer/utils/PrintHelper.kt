@@ -23,7 +23,10 @@ import android.widget.Toast
 import com.ct.explorer.data.model.FileCategory
 import com.ct.explorer.data.model.FileItem
 import com.ct.explorer.utils.docx.DocxElement
+import com.ct.explorer.utils.docx.DocxPaginator
 import com.ct.explorer.utils.docx.DocxParser
+import com.ct.explorer.utils.docx.PageOrientation
+import com.ct.explorer.utils.docx.PaperSize
 import com.ct.explorer.utils.excel.ExcelParser
 import java.io.File
 import java.io.FileInputStream
@@ -259,13 +262,14 @@ object PrintHelper {
     }
 
     /**
-     * Prints raw HTML string with optional base folder for images/CSS.
+     * Prints raw HTML string with optional base folder for images/CSS and target paper media size.
      */
     fun printHtmlContent(
         context: Context,
         jobTitle: String,
         html: String,
-        baseDir: File? = null
+        baseDir: File? = null,
+        mediaSize: PrintAttributes.MediaSize = PrintAttributes.MediaSize.ISO_A4
     ) {
         Handler(Looper.getMainLooper()).post {
             try {
@@ -276,7 +280,7 @@ object PrintHelper {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         val printAdapter = webView.createPrintDocumentAdapter(jobTitle)
                         val attributes = PrintAttributes.Builder()
-                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                            .setMediaSize(mediaSize)
                             .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
                             .build()
                         printManager.print("$jobTitle-Print", printAdapter, attributes)
@@ -359,9 +363,15 @@ object PrintHelper {
     }
 
     /**
-     * Prints MS Word (.docx) document formatted with styled headings and tables into HTML print spooler.
+     * Prints MS Word (.docx) document formatted with styled headings and tables into HTML print spooler,
+     * fully supporting physical page sizes (A4, Letter, Legal) and orientations.
      */
-    fun printWordFile(context: Context, file: File) {
+    fun printWordFile(
+        context: Context,
+        file: File,
+        paperSize: PaperSize = PaperSize.A4,
+        orientation: PageOrientation = PageOrientation.PORTRAIT
+    ) {
         val docResult = DocxParser.parse(file)
         if (docResult.isFailure) {
             // Fallback to text
@@ -370,6 +380,7 @@ object PrintHelper {
         }
 
         val doc = docResult.getOrNull() ?: return
+        val paginatedPages = DocxPaginator.paginate(doc, paperSize, orientation)
         val sb = StringBuilder()
 
         sb.append("""
@@ -379,65 +390,129 @@ object PrintHelper {
               <meta charset="utf-8">
               <title>${doc.title}</title>
               <style>
-                @page { margin: 25mm 20mm; }
+                @page {
+                  size: ${paperSize.cssPageSize} ${orientation.name.lowercase()};
+                  margin: 20mm 16mm;
+                }
                 body {
                   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                  font-size: 12pt;
-                  line-height: 1.6;
+                  font-size: 11pt;
+                  line-height: 1.5;
                   color: #0f172a;
+                  margin: 0;
+                  padding: 0;
                 }
-                h1 { color: #1e3a8a; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
-                h2 { color: #1d4ed8; margin-top: 20px; }
-                h3 { color: #2563eb; }
-                p { margin-bottom: 12px; }
+                .page {
+                  box-sizing: border-box;
+                  width: 100%;
+                  position: relative;
+                }
+                .page-header {
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 8.5pt;
+                  color: #64748b;
+                  border-bottom: 1px solid #e2e8f0;
+                  padding-bottom: 4px;
+                  margin-bottom: 14px;
+                }
+                .page-footer {
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 8.5pt;
+                  color: #64748b;
+                  border-top: 1px solid #e2e8f0;
+                  padding-top: 6px;
+                  margin-top: 20px;
+                }
+                .page-break {
+                  page-break-after: always;
+                  break-after: page;
+                  height: 0;
+                  margin: 0;
+                  padding: 0;
+                }
+                h1.doc-title {
+                  color: #1e3a8a;
+                  font-size: 18pt;
+                  border-bottom: 1.5px solid #cbd5e1;
+                  padding-bottom: 6px;
+                  margin-top: 0;
+                  margin-bottom: 14px;
+                }
+                h1 { color: #1e3a8a; font-size: 16pt; margin-top: 14px; margin-bottom: 8px; }
+                h2 { color: #1d4ed8; font-size: 14pt; margin-top: 12px; margin-bottom: 6px; }
+                h3 { color: #2563eb; font-size: 12pt; margin-top: 10px; margin-bottom: 4px; }
+                p { margin-top: 0; margin-bottom: 10px; }
                 table {
                   width: 100%;
                   border-collapse: collapse;
-                  margin: 16px 0;
+                  margin: 12px 0;
                 }
                 th, td {
                   border: 1px solid #cbd5e1;
-                  padding: 8px 12px;
+                  padding: 6px 10px;
                   text-align: left;
+                  font-size: 10pt;
                 }
+                th { background-color: #f1f5f9; font-weight: bold; }
                 tr:nth-child(even) { background-color: #f8fafc; }
-                .bullet { margin-left: 20px; }
+                .bullet { margin-left: 18px; }
               </style>
             </head>
             <body>
-              <h1>${doc.title}</h1>
         """.trimIndent())
 
-        for (el in doc.elements) {
-            when (el) {
-                is DocxElement.Heading -> {
-                    sb.append("<h${el.level}>${el.text}</h${el.level}>\n")
-                }
-                is DocxElement.Paragraph -> {
-                    val pClass = if (el.isBullet) " class=\"bullet\"" else ""
-                    val bulletPrefix = if (el.isBullet) "• " else ""
-                    sb.append("<p$pClass>$bulletPrefix${el.fullText}</p>\n")
-                }
-                is DocxElement.Table -> {
-                    sb.append("<table>\n")
-                    el.rows.forEachIndexed { rIdx, row ->
-                        sb.append("<tr>\n")
-                        row.forEach { cell ->
-                            val tag = if (rIdx == 0) "th" else "td"
-                            sb.append("<$tag>$cell</$tag>\n")
-                        }
-                        sb.append("</tr>\n")
+        paginatedPages.forEachIndexed { pageIdx, page ->
+            sb.append("<div class=\"page\">\n")
+            sb.append("<div class=\"page-header\"><span>${doc.title}</span><span>${paperSize.title} • ${orientation.title}</span></div>\n")
+
+            if (pageIdx == 0 && doc.title.isNotBlank()) {
+                sb.append("<h1 class=\"doc-title\">${doc.title}</h1>\n")
+            }
+
+            for (el in page.elements) {
+                when (el) {
+                    is DocxElement.Heading -> {
+                        sb.append("<h${el.level}>${el.text}</h${el.level}>\n")
                     }
-                    sb.append("</table>\n")
+                    is DocxElement.Paragraph -> {
+                        val pClass = if (el.isBullet) " class=\"bullet\"" else ""
+                        val bulletPrefix = if (el.isBullet) "• " else ""
+                        sb.append("<p$pClass>$bulletPrefix${el.fullText}</p>\n")
+                    }
+                    is DocxElement.Table -> {
+                        sb.append("<table>\n")
+                        el.rows.forEachIndexed { rIdx, row ->
+                            sb.append("<tr>\n")
+                            row.forEach { cell ->
+                                val tag = if (rIdx == 0) "th" else "td"
+                                sb.append("<$tag>$cell</$tag>\n")
+                            }
+                            sb.append("</tr>\n")
+                        }
+                        sb.append("</table>\n")
+                    }
+                    DocxElement.Divider -> {
+                        sb.append("<hr style=\"border: none; border-top: 1px solid #e2e8f0; margin: 12px 0;\" />\n")
+                    }
+                    DocxElement.PageBreak -> {
+                        // Handled by pagination container
+                    }
                 }
-                DocxElement.Divider -> {
-                    sb.append("<hr style=\"border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;\" />\n")
-                }
+            }
+
+            sb.append("<div class=\"page-footer\"><span>${doc.title}</span><span>Page ${page.pageNumber} of ${paginatedPages.size}</span></div>\n")
+            sb.append("</div>\n")
+
+            if (pageIdx < paginatedPages.size - 1) {
+                sb.append("<div class=\"page-break\"></div>\n")
             }
         }
 
         sb.append("</body></html>")
-        printHtmlContent(context, doc.title, sb.toString())
+        val printMedia = paperSize.getPrintMediaSize(orientation)
+        printHtmlContent(context, doc.title, sb.toString(), null, printMedia)
     }
 
     /**

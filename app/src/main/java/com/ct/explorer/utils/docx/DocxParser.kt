@@ -22,6 +22,7 @@ sealed class DocxElement {
     data class Paragraph(val runs: List<TextRun>, val fullText: String, val isBullet: Boolean = false) : DocxElement()
     data class Table(val rows: List<List<String>>) : DocxElement()
     object Divider : DocxElement()
+    object PageBreak : DocxElement()
 }
 
 data class DocxDocument(
@@ -29,7 +30,9 @@ data class DocxDocument(
     val elements: List<DocxElement>,
     val wordCount: Int,
     val characterCount: Int,
-    val estimatedReadMinutes: Int
+    val estimatedReadMinutes: Int = maxOf(1, wordCount / 200),
+    val detectedPaperSize: PaperSize = PaperSize.A4,
+    val detectedOrientation: PageOrientation = PageOrientation.PORTRAIT
 )
 
 object DocxParser {
@@ -101,18 +104,20 @@ object DocxParser {
         var eventType = parser.eventType
         var totalWords = 0
         var totalChars = 0
+        var detectedPaper = PaperSize.A4
+        var detectedOrientation = PageOrientation.PORTRAIT
 
         while (eventType != XmlPullParser.END_DOCUMENT) {
             if (eventType == XmlPullParser.START_TAG) {
                 val tag = localTag(parser.name)
                 when (tag) {
                     "p" -> {
-                        val element = parseParagraph(parser)
-                        if (element != null) {
-                            elements.add(element)
-                            val text = when (element) {
-                                is DocxElement.Heading -> element.text
-                                is DocxElement.Paragraph -> element.fullText
+                        val parsedItems = parseParagraphItems(parser)
+                        for (item in parsedItems) {
+                            elements.add(item)
+                            val text = when (item) {
+                                is DocxElement.Heading -> item.text
+                                is DocxElement.Paragraph -> item.fullText
                                 else -> ""
                             }
                             if (text.isNotBlank()) {
@@ -134,6 +139,22 @@ object DocxParser {
                             }
                         }
                     }
+                    "pgsz" -> {
+                        val wVal = getAttr(parser, "w")?.toIntOrNull() ?: 0
+                        val hVal = getAttr(parser, "h")?.toIntOrNull() ?: 0
+                        val orient = getAttr(parser, "orient")
+                        if (orient?.equals("landscape", ignoreCase = true) == true || (wVal > 0 && hVal > 0 && wVal > hVal)) {
+                            detectedOrientation = PageOrientation.LANDSCAPE
+                        }
+                        val maxDim = maxOf(wVal, hVal)
+                        if (maxDim >= 18000) {
+                            detectedPaper = PaperSize.LEGAL
+                        } else if (maxDim in 14000..16200) {
+                            detectedPaper = PaperSize.LETTER
+                        } else {
+                            detectedPaper = PaperSize.A4
+                        }
+                    }
                 }
             }
             eventType = parser.next()
@@ -146,7 +167,9 @@ object DocxParser {
             elements = elements,
             wordCount = totalWords,
             characterCount = totalChars,
-            estimatedReadMinutes = readMinutes
+            estimatedReadMinutes = readMinutes,
+            detectedPaperSize = detectedPaper,
+            detectedOrientation = detectedOrientation
         )
     }
 
@@ -235,7 +258,8 @@ object DocxParser {
         )
     }
 
-    private fun parseParagraph(parser: XmlPullParser): DocxElement? {
+    private fun parseParagraphItems(parser: XmlPullParser): List<DocxElement> {
+        val result = mutableListOf<DocxElement>()
         var headingLevel: Int? = null
         var isBullet = false
         val runs = mutableListOf<TextRun>()
@@ -258,7 +282,16 @@ object DocxParser {
                             isBullet = true
                         }
                         "r" -> {
-                            val run = parseRun(parser)
+                            val (run, hasBreak) = parseRunWithBreak(parser)
+                            if (hasBreak) {
+                                val currentText = sbFull.toString().trim()
+                                if (currentText.isNotEmpty()) {
+                                    result.add(DocxElement.Paragraph(runs.toList(), currentText, isBullet))
+                                    runs.clear()
+                                    sbFull.clear()
+                                }
+                                result.add(DocxElement.PageBreak)
+                            }
                             if (run != null && run.text.isNotEmpty()) {
                                 runs.add(run)
                                 sbFull.append(run.text)
@@ -278,20 +311,27 @@ object DocxParser {
         }
 
         val text = sbFull.toString().trim()
-        if (text.isEmpty() && headingLevel == null) return null
-
-        return if (headingLevel != null && text.isNotEmpty()) {
-            DocxElement.Heading(text = text, level = headingLevel)
-        } else {
-            DocxElement.Paragraph(runs = runs, fullText = text, isBullet = isBullet)
+        if (text.isNotEmpty() || headingLevel != null) {
+            if (headingLevel != null && text.isNotEmpty()) {
+                result.add(DocxElement.Heading(text = text, level = headingLevel))
+            } else if (text.isNotEmpty()) {
+                result.add(DocxElement.Paragraph(runs = runs, fullText = text, isBullet = isBullet))
+            }
         }
+
+        return result
     }
 
-    private fun parseRun(parser: XmlPullParser): TextRun? {
+    private fun parseParagraph(parser: XmlPullParser): DocxElement? {
+        return parseParagraphItems(parser).firstOrNull()
+    }
+
+    private fun parseRunWithBreak(parser: XmlPullParser): Pair<TextRun?, Boolean> {
         var isBold = false
         var isItalic = false
         var isUnderline = false
         var colorHex: String? = null
+        var hasPageBreak = false
         val runText = StringBuilder()
 
         var insideR = true
@@ -313,7 +353,15 @@ object DocxParser {
                             runText.append(parser.nextText())
                         }
                         "br" -> {
-                            runText.append("\n")
+                            val brType = getAttr(parser, "type")
+                            if (brType?.equals("page", ignoreCase = true) == true) {
+                                hasPageBreak = true
+                            } else {
+                                runText.append("\n")
+                            }
+                        }
+                        "lastrenderedpagebreak" -> {
+                            hasPageBreak = true
                         }
                         "tab" -> {
                             runText.append("    ")
@@ -331,13 +379,22 @@ object DocxParser {
             }
         }
 
-        return TextRun(
-            text = runText.toString(),
-            isBold = isBold,
-            isItalic = isItalic,
-            isUnderline = isUnderline,
-            colorHex = colorHex
-        )
+        val text = runText.toString()
+        val run = if (text.isNotEmpty()) {
+            TextRun(
+                text = text,
+                isBold = isBold,
+                isItalic = isItalic,
+                isUnderline = isUnderline,
+                colorHex = colorHex
+            )
+        } else null
+
+        return Pair(run, hasPageBreak)
+    }
+
+    private fun parseRun(parser: XmlPullParser): TextRun? {
+        return parseRunWithBreak(parser).first
     }
 
     private fun parseTable(parser: XmlPullParser): DocxElement.Table {
