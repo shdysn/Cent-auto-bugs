@@ -95,6 +95,24 @@ enum class PageOrientation(val title: String) {
 }
 
 /**
+ * Standard Margins presets matching Microsoft Word and Office specifications.
+ */
+enum class PageMargins(
+    val title: String,
+    val subtitle: String,
+    val topInch: Float,
+    val bottomInch: Float,
+    val leftInch: Float,
+    val rightInch: Float,
+    val paddingDp: Int
+) {
+    NORMAL("Normal", "1.0\" all sides (2.54 cm)", 1.0f, 1.0f, 1.0f, 1.0f, 28),
+    NARROW("Narrow", "0.5\" all sides (1.27 cm)", 0.5f, 0.5f, 0.5f, 0.5f, 14),
+    MODERATE("Moderate", "Top/Bottom 1.0\", Left/Right 0.75\"", 1.0f, 1.0f, 0.75f, 0.75f, 22),
+    WIDE("Wide", "Top/Bottom 1.0\", Left/Right 2.0\"", 1.0f, 1.0f, 2.0f, 2.0f, 40)
+}
+
+/**
  * Represents a single physical page in the document.
  */
 data class DocxPage(
@@ -103,7 +121,8 @@ data class DocxPage(
     val paperSize: PaperSize,
     val orientation: PageOrientation,
     val elements: List<DocxElement>,
-    val isFirstPage: Boolean = false
+    val isFirstPage: Boolean = false,
+    val margins: PageMargins = PageMargins.NORMAL
 )
 
 /**
@@ -115,10 +134,17 @@ object DocxPaginator {
         document: DocxDocument,
         paperSize: PaperSize,
         orientation: PageOrientation,
-        fontSizeMultiplier: Float = 1.0f
+        fontSizeMultiplier: Float = 1.0f,
+        margins: PageMargins = PageMargins.NORMAL
     ): List<DocxPage> {
-        val totalBudget = (paperSize.contentBudgetUnits(orientation) / fontSizeMultiplier.coerceIn(0.7f, 2.0f)).toInt()
-        val charsPerLine = if (orientation == PageOrientation.PORTRAIT) 75 else 105
+        val marginFactor = when (margins) {
+            PageMargins.NARROW -> 1.15f
+            PageMargins.WIDE -> 0.82f
+            PageMargins.MODERATE -> 1.05f
+            PageMargins.NORMAL -> 1.0f
+        }
+        val totalBudget = ((paperSize.contentBudgetUnits(orientation) * marginFactor) / fontSizeMultiplier.coerceIn(0.7f, 2.0f)).toInt()
+        val charsPerLine = ((if (orientation == PageOrientation.PORTRAIT) 75 else 105) * marginFactor).toInt()
 
         val rawPages = mutableListOf<MutableList<DocxElement>>()
         var currentPageElements = mutableListOf<DocxElement>()
@@ -236,7 +262,8 @@ object DocxPaginator {
                 paperSize = paperSize,
                 orientation = orientation,
                 elements = elementsList,
-                isFirstPage = (idx == 0)
+                isFirstPage = (idx == 0),
+                margins = margins
             )
         }
     }

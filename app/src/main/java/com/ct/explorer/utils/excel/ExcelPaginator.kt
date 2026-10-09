@@ -1,5 +1,6 @@
 package com.ct.explorer.utils.excel
 
+import com.ct.explorer.utils.docx.PageMargins
 import com.ct.explorer.utils.docx.PageOrientation
 import com.ct.explorer.utils.docx.PaperSize
 
@@ -16,7 +17,8 @@ data class ExcelPage(
     val rows: List<List<String>>,
     val startRowIndex: Int,
     val endRowIndex: Int,
-    val isFirstPage: Boolean = false
+    val isFirstPage: Boolean = false,
+    val margins: PageMargins = PageMargins.NORMAL
 )
 
 /**
@@ -28,8 +30,8 @@ object ExcelPaginator {
      * Calculates the estimated number of table rows that comfortably fit on a physical page
      * considering paper height, margins, header banner, column headers, and footer.
      */
-    fun rowsPerPage(paperSize: PaperSize, orientation: PageOrientation): Int {
-        return if (orientation == PageOrientation.LANDSCAPE) {
+    fun rowsPerPage(paperSize: PaperSize, orientation: PageOrientation, margins: PageMargins = PageMargins.NORMAL): Int {
+        val baseRows = if (orientation == PageOrientation.LANDSCAPE) {
             when (paperSize) {
                 PaperSize.A4 -> 26
                 PaperSize.LETTER -> 24
@@ -42,6 +44,11 @@ object ExcelPaginator {
                 PaperSize.LEGAL -> 50
             }
         }
+        return when (margins) {
+            PageMargins.NARROW -> (baseRows * 1.15f).toInt()
+            PageMargins.WIDE -> (baseRows * 0.85f).toInt()
+            else -> baseRows
+        }
     }
 
     /**
@@ -51,7 +58,8 @@ object ExcelPaginator {
     fun paginate(
         sheet: ExcelSheet,
         paperSize: PaperSize,
-        orientation: PageOrientation
+        orientation: PageOrientation,
+        margins: PageMargins = PageMargins.NORMAL
     ): List<ExcelPage> {
         if (sheet.rows.isEmpty()) {
             return listOf(
@@ -65,12 +73,13 @@ object ExcelPaginator {
                     rows = emptyList(),
                     startRowIndex = 0,
                     endRowIndex = 0,
-                    isFirstPage = true
+                    isFirstPage = true,
+                    margins = margins
                 )
             )
         }
 
-        val maxRows = rowsPerPage(paperSize, orientation)
+        val maxRows = rowsPerPage(paperSize, orientation, margins)
         val hasHeader = sheet.rows.size > 1
         val headerRow = if (hasHeader) sheet.rows.first() else null
         val dataRows = if (hasHeader) sheet.rows.drop(1) else sheet.rows
@@ -95,7 +104,8 @@ object ExcelPaginator {
                 rows = pageRows,
                 startRowIndex = startIdx,
                 endRowIndex = endIdx.coerceAtLeast(startIdx),
-                isFirstPage = (idx == 0)
+                isFirstPage = (idx == 0),
+                margins = margins
             )
         }
     }

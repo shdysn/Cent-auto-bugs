@@ -47,8 +47,13 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ct.explorer.data.model.FileItem
+import com.ct.explorer.ui.components.office.MsExcelBottomBar
+import com.ct.explorer.ui.components.office.MsExcelFormulaBar
+import com.ct.explorer.ui.components.office.MsExcelPageSheet
+import com.ct.explorer.ui.components.office.MsExcelRibbon
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
 import com.ct.explorer.utils.FileOpener
+import com.ct.explorer.utils.docx.PageMargins
 import com.ct.explorer.utils.docx.PageOrientation
 import com.ct.explorer.utils.docx.PaperSize
 import com.ct.explorer.utils.excel.ExcelPage
@@ -80,10 +85,14 @@ fun ExcelViewerScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Physical Page & Paper Configuration (A4, Letter, Legal)
+    // Physical Page & Paper Configuration (A4, Letter, Legal, Margins)
     var selectedPaperSize by remember { mutableStateOf(PaperSize.A4) }
     var selectedOrientation by remember { mutableStateOf(PageOrientation.LANDSCAPE) }
+    var selectedMargins by remember { mutableStateOf(PageMargins.NORMAL) }
     var showPrintSetupDialog by remember { mutableStateOf(false) }
+
+    var selectedCellRef by remember { mutableStateOf("A1") }
+    var selectedCellValue by remember { mutableStateOf("") }
 
     // Fullscreen & Original Page View states (defaults to True for authentic A4/Letter/Legal print page layout)
     var isFullScreen by remember { mutableStateOf(true) }
@@ -164,10 +173,10 @@ fun ExcelViewerScreen(
 
     val currentSheet: ExcelSheet? = workbook?.sheets?.getOrNull(selectedSheetIndex)
 
-    // Real Physical Pagination (A4, Letter, Legal)
-    val paginatedPages: List<ExcelPage> = remember(currentSheet, selectedPaperSize, selectedOrientation) {
+    // Real Physical Pagination (A4, Letter, Legal, Margins)
+    val paginatedPages: List<ExcelPage> = remember(currentSheet, selectedPaperSize, selectedOrientation, selectedMargins) {
         if (currentSheet == null) emptyList()
-        else ExcelPaginator.paginate(currentSheet, selectedPaperSize, selectedOrientation)
+        else ExcelPaginator.paginate(currentSheet, selectedPaperSize, selectedOrientation, selectedMargins)
     }
 
     // Calculate auto stats for active sheet

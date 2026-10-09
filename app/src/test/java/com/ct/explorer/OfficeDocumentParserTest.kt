@@ -318,4 +318,45 @@ class OfficeDocumentParserTest {
         assertEquals(1, emptyPages.size)
         assertEquals(1, emptyPages[0].pageNumber)
     }
+
+    @Test
+    fun testPageMarginsPresetsAndOfficePaginatorIntegration() {
+        val normal = com.ct.explorer.utils.docx.PageMargins.NORMAL
+        val narrow = com.ct.explorer.utils.docx.PageMargins.NARROW
+        val moderate = com.ct.explorer.utils.docx.PageMargins.MODERATE
+        val wide = com.ct.explorer.utils.docx.PageMargins.WIDE
+
+        assertEquals("Normal", normal.title)
+        assertEquals(1.0f, normal.topInch)
+        assertEquals(1.0f, normal.bottomInch)
+        assertEquals(1.0f, normal.leftInch)
+        assertEquals(1.0f, normal.rightInch)
+
+        assertEquals("Narrow", narrow.title)
+        assertEquals(0.5f, narrow.topInch)
+
+        assertEquals("Moderate", moderate.title)
+        assertEquals(0.75f, moderate.leftInch)
+
+        assertEquals("Wide", wide.title)
+        assertEquals(2.0f, wide.leftInch)
+
+        // Test Text Paginator with Narrow vs Wide Margins (Wide margins hold fewer lines per page)
+        val sampleText = (1..150).joinToString("\n") { "Line $it: testing office margin presets" }
+        val narrowPages = com.ct.explorer.utils.text.TextPaginator.paginate(
+            text = sampleText,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT,
+            margins = narrow
+        )
+        val widePages = com.ct.explorer.utils.text.TextPaginator.paginate(
+            text = sampleText,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT,
+            margins = wide
+        )
+        assertEquals(narrow, narrowPages[0].margins)
+        assertEquals(wide, widePages[0].margins)
+        assertTrue("Wide margins should produce more or equal pages than narrow margins", widePages.size >= narrowPages.size)
+    }
 }

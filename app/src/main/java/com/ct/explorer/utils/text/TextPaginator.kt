@@ -1,5 +1,6 @@
 package com.ct.explorer.utils.text
 
+import com.ct.explorer.utils.docx.PageMargins
 import com.ct.explorer.utils.docx.PageOrientation
 import com.ct.explorer.utils.docx.PaperSize
 
@@ -14,7 +15,8 @@ data class TextPage(
     val lines: List<String>,
     val startLineNumber: Int,
     val endLineNumber: Int,
-    val isFirstPage: Boolean = false
+    val isFirstPage: Boolean = false,
+    val margins: PageMargins = PageMargins.NORMAL
 )
 
 /**
@@ -26,8 +28,8 @@ object TextPaginator {
      * Calculates the estimated number of monospace text lines per physical page
      * taking standard 20mm/15mm margins, 10.5pt typography, 1.45 line-height, header, and footer into account.
      */
-    fun linesPerPage(paperSize: PaperSize, orientation: PageOrientation): Int {
-        return if (orientation == PageOrientation.PORTRAIT) {
+    fun linesPerPage(paperSize: PaperSize, orientation: PageOrientation, margins: PageMargins = PageMargins.NORMAL): Int {
+        val base = if (orientation == PageOrientation.PORTRAIT) {
             when (paperSize) {
                 PaperSize.A4 -> 54
                 PaperSize.LETTER -> 48
@@ -40,6 +42,11 @@ object TextPaginator {
                 PaperSize.LEGAL -> 34
             }
         }
+        return when (margins) {
+            PageMargins.NARROW -> (base * 1.15f).toInt()
+            PageMargins.WIDE -> (base * 0.85f).toInt()
+            else -> base
+        }
     }
 
     /**
@@ -48,7 +55,8 @@ object TextPaginator {
     fun paginate(
         text: String,
         paperSize: PaperSize,
-        orientation: PageOrientation
+        orientation: PageOrientation,
+        margins: PageMargins = PageMargins.NORMAL
     ): List<TextPage> {
         val rawLines = text.split("\n")
         if (rawLines.isEmpty() || (rawLines.size == 1 && rawLines.first().isEmpty())) {
@@ -61,12 +69,13 @@ object TextPaginator {
                     lines = listOf(""),
                     startLineNumber = 1,
                     endLineNumber = 1,
-                    isFirstPage = true
+                    isFirstPage = true,
+                    margins = margins
                 )
             )
         }
 
-        val maxLines = linesPerPage(paperSize, orientation)
+        val maxLines = linesPerPage(paperSize, orientation, margins)
         val chunked = rawLines.chunked(maxLines)
         val totalPagesCount = chunked.size
 
@@ -81,7 +90,8 @@ object TextPaginator {
                 lines = pageLines,
                 startLineNumber = startLine,
                 endLineNumber = endLine,
-                isFirstPage = (idx == 0)
+                isFirstPage = (idx == 0),
+                margins = margins
             )
         }
     }
