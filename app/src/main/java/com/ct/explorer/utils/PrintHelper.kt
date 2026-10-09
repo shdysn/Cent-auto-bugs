@@ -28,6 +28,8 @@ import com.ct.explorer.utils.docx.DocxParser
 import com.ct.explorer.utils.docx.PageOrientation
 import com.ct.explorer.utils.docx.PaperSize
 import com.ct.explorer.utils.excel.ExcelParser
+import com.ct.explorer.utils.excel.ExcelPaginator
+import com.ct.explorer.utils.text.TextPaginator
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -296,70 +298,143 @@ object PrintHelper {
     }
 
     /**
-     * Prints plain text or code file by formatting into clean, paginated printable HTML.
+     * Prints plain text or code file by formatting into clean, paginated printable HTML
+     * with standard paper sizes (A4, Letter, Legal) and orientation.
      */
-    fun printTextFile(context: Context, file: File) {
+    fun printTextFile(
+        context: Context,
+        file: File,
+        paperSize: PaperSize = PaperSize.A4,
+        orientation: PageOrientation = PageOrientation.PORTRAIT
+    ) {
         val content = try {
             file.readText(Charsets.UTF_8)
         } catch (_: Exception) {
             "Unable to read file content"
         }
-        printTextContent(context, file.nameWithoutExtension, content, file.name)
+        printTextContent(context, file.nameWithoutExtension, content, file.name, paperSize, orientation)
     }
 
     /**
-     * Prints text content wrapped in an elegant printable HTML layout.
+     * Prints text content wrapped in an elegant printable HTML layout with real physical pages.
      */
-    fun printTextContent(context: Context, jobTitle: String, text: String, fileName: String = jobTitle) {
-        val escaped = text
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
+    fun printTextContent(
+        context: Context,
+        jobTitle: String,
+        text: String,
+        fileName: String = jobTitle,
+        paperSize: PaperSize = PaperSize.A4,
+        orientation: PageOrientation = PageOrientation.PORTRAIT
+    ) {
+        val pages = TextPaginator.paginate(text, paperSize, orientation)
+        val sb = StringBuilder()
 
-        val formattedHtml = """
+        sb.append("""
             <!DOCTYPE html>
             <html>
             <head>
               <meta charset="utf-8">
               <title>$fileName</title>
               <style>
-                @page { margin: 20mm 15mm; }
+                @page {
+                  size: ${paperSize.cssPageSize} ${orientation.name.lowercase()};
+                  margin: 20mm 15mm;
+                }
                 body {
                   font-family: 'Consolas', 'Courier New', monospace;
-                  font-size: 11pt;
-                  line-height: 1.5;
-                  color: #111;
+                  font-size: 10.5pt;
+                  line-height: 1.45;
+                  color: #0f172a;
                   margin: 0;
                   padding: 0;
                 }
-                header {
-                  border-bottom: 2px solid #2563eb;
-                  padding-bottom: 8px;
-                  margin-bottom: 18px;
+                .page {
+                  box-sizing: border-box;
+                  width: 100%;
+                  position: relative;
+                }
+                .page-header {
                   display: flex;
                   justify-content: space-between;
+                  font-size: 8.5pt;
+                  color: #64748b;
+                  border-bottom: 1.5px solid #2563eb;
+                  padding-bottom: 4px;
+                  margin-bottom: 14px;
                   font-family: sans-serif;
                 }
-                .title { font-weight: bold; font-size: 14pt; color: #1e293b; }
-                .meta { font-size: 9pt; color: #64748b; }
-                pre {
+                .page-header .doc-title {
+                  font-weight: bold;
+                  color: #1e293b;
+                  font-size: 11pt;
+                }
+                .page-footer {
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 8.5pt;
+                  color: #64748b;
+                  border-top: 1px solid #cbd5e1;
+                  padding-top: 6px;
+                  margin-top: 18px;
+                  font-family: sans-serif;
+                }
+                .page-break {
+                  page-break-after: always;
+                  break-after: page;
+                  height: 0;
+                  margin: 0;
+                  padding: 0;
+                }
+                .line-block {
+                  display: flex;
+                  font-family: 'Consolas', 'Courier New', monospace;
+                  font-size: 10.5pt;
+                  line-height: 1.45;
+                }
+                .line-num {
+                  color: #94a3b8;
+                  width: 38px;
+                  user-select: none;
+                  text-align: right;
+                  padding-right: 12px;
+                  font-size: 9.5pt;
+                }
+                .line-content {
+                  flex: 1;
                   white-space: pre-wrap;
                   word-break: break-word;
-                  margin: 0;
                 }
               </style>
             </head>
             <body>
-              <header>
-                <div class="title">$fileName</div>
-                <div class="meta">Cent File Manager • Printed Document</div>
-              </header>
-              <pre>$escaped</pre>
-            </body>
-            </html>
-        """.trimIndent()
+        """.trimIndent())
 
-        printHtmlContent(context, jobTitle, formattedHtml)
+        pages.forEachIndexed { pageIdx, page ->
+            sb.append("<div class=\"page\">\n")
+            sb.append("<div class=\"page-header\"><span class=\"doc-title\">$fileName</span><span>${paperSize.title} • ${orientation.title}</span></div>\n")
+
+            sb.append("<div class=\"content\">\n")
+            page.lines.forEachIndexed { lIdx, line ->
+                val lineNo = page.startLineNumber + lIdx
+                val escaped = line
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                sb.append("<div class=\"line-block\"><span class=\"line-num\">$lineNo</span><span class=\"line-content\">$escaped</span></div>\n")
+            }
+            sb.append("</div>\n")
+
+            sb.append("<div class=\"page-footer\"><span>Lines ${page.startLineNumber}–${page.endLineNumber}</span><span>Page ${page.pageNumber} of ${pages.size}</span></div>\n")
+            sb.append("</div>\n")
+
+            if (pageIdx < pages.size - 1) {
+                sb.append("<div class=\"page-break\"></div>\n")
+            }
+        }
+
+        sb.append("</body></html>")
+        val printMedia = paperSize.getPrintMediaSize(orientation)
+        printHtmlContent(context, jobTitle, sb.toString(), null, printMedia)
     }
 
     /**
@@ -516,18 +591,30 @@ object PrintHelper {
     }
 
     /**
-     * Prints an Excel or CSV spreadsheet formatted as a clean grid table into HTML print spooler.
+     * Prints an Excel or CSV spreadsheet formatted as a clean grid table into HTML print spooler,
+     * fully supporting physical paper sizes (A4, Letter, Legal) and orientations.
      */
-    fun printSpreadsheetFile(context: Context, file: File) {
+    fun printSpreadsheetFile(
+        context: Context,
+        file: File,
+        paperSize: PaperSize = PaperSize.A4,
+        orientation: PageOrientation = PageOrientation.LANDSCAPE,
+        sheetIndex: Int? = null
+    ) {
         val result = ExcelParser.parse(file)
         if (result.isFailure) {
-            printTextFile(context, file)
+            printTextFile(context, file, paperSize, orientation)
             return
         }
 
         val workbook = result.getOrNull() ?: return
-        val sb = StringBuilder()
+        val sheetsToPrint = if (sheetIndex != null) {
+            listOfNotNull(workbook.sheets.getOrNull(sheetIndex))
+        } else {
+            workbook.sheets
+        }
 
+        val sb = StringBuilder()
         sb.append("""
             <!DOCTYPE html>
             <html>
@@ -535,23 +622,63 @@ object PrintHelper {
               <meta charset="utf-8">
               <title>${workbook.title}</title>
               <style>
-                @page { size: landscape; margin: 15mm 10mm; }
+                @page {
+                  size: ${paperSize.cssPageSize} ${orientation.name.lowercase()};
+                  margin: 15mm 12mm;
+                }
                 body {
                   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                   font-size: 10pt;
                   color: #0f172a;
                   margin: 0;
+                  padding: 0;
                 }
-                h2 { color: #15803d; border-bottom: 2px solid #16a34a; padding-bottom: 4px; margin-top: 24px; }
+                .page {
+                  box-sizing: border-box;
+                  width: 100%;
+                  position: relative;
+                }
+                .page-header {
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 8.5pt;
+                  color: #64748b;
+                  border-bottom: 1.5px solid #16a34a;
+                  padding-bottom: 4px;
+                  margin-bottom: 12px;
+                }
+                .page-header .doc-title {
+                  font-weight: bold;
+                  color: #166534;
+                  font-size: 11pt;
+                }
+                .page-footer {
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 8.5pt;
+                  color: #64748b;
+                  border-top: 1px solid #cbd5e1;
+                  padding-top: 6px;
+                  margin-top: 16px;
+                }
+                .page-break {
+                  page-break-after: always;
+                  break-after: page;
+                  height: 0;
+                  margin: 0;
+                  padding: 0;
+                }
                 table {
                   width: 100%;
                   border-collapse: collapse;
-                  margin: 12px 0 24px 0;
+                  margin: 8px 0;
                 }
                 th, td {
                   border: 1px solid #94a3b8;
-                  padding: 6px 8px;
+                  padding: 5px 8px;
                   font-size: 9pt;
+                  text-align: left;
+                  word-break: break-word;
                 }
                 th {
                   background-color: #dcfce7;
@@ -562,25 +689,49 @@ object PrintHelper {
               </style>
             </head>
             <body>
-              <h1 style="color: #166534;">${workbook.title}</h1>
         """.trimIndent())
 
-        for (sheet in workbook.sheets) {
-            sb.append("<h2>${sheet.name}</h2>\n")
+        val allPages = mutableListOf<Pair<String, com.ct.explorer.utils.excel.ExcelPage>>()
+        for (sheet in sheetsToPrint) {
+            val pages = ExcelPaginator.paginate(sheet, paperSize, orientation)
+            for (p in pages) {
+                allPages.add(Pair(sheet.name, p))
+            }
+        }
+
+        allPages.forEachIndexed { pageIdx, (sheetName, page) ->
+            sb.append("<div class=\"page\">\n")
+            sb.append("<div class=\"page-header\"><span class=\"doc-title\">${workbook.title} • $sheetName</span><span>${paperSize.title} • ${orientation.title}</span></div>\n")
+
             sb.append("<table>\n")
-            sheet.rows.forEachIndexed { rIdx, row ->
+            if (page.headerRow != null && page.headerRow.isNotEmpty()) {
                 sb.append("<tr>\n")
-                for (c in 0 until sheet.maxColumns) {
+                for (cell in page.headerRow) {
+                    sb.append("<th>$cell</th>\n")
+                }
+                sb.append("</tr>\n")
+            }
+            for (row in page.rows) {
+                sb.append("<tr>\n")
+                val colCount = page.headerRow?.size ?: row.size
+                for (c in 0 until colCount) {
                     val cellVal = row.getOrNull(c).orEmpty()
-                    val tag = if (rIdx == 0) "th" else "td"
-                    sb.append("<$tag>$cellVal</$tag>\n")
+                    sb.append("<td>$cellVal</td>\n")
                 }
                 sb.append("</tr>\n")
             }
             sb.append("</table>\n")
+
+            sb.append("<div class=\"page-footer\"><span>Sheet: $sheetName (Rows ${page.startRowIndex}–${page.endRowIndex})</span><span>Page ${page.pageNumber} of ${page.totalPages}</span></div>\n")
+            sb.append("</div>\n")
+
+            if (pageIdx < allPages.size - 1) {
+                sb.append("<div class=\"page-break\"></div>\n")
+            }
         }
 
         sb.append("</body></html>")
-        printHtmlContent(context, workbook.title, sb.toString())
+        val printMedia = paperSize.getPrintMediaSize(orientation)
+        printHtmlContent(context, workbook.title, sb.toString(), null, printMedia)
     }
 }

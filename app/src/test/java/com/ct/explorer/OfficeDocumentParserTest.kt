@@ -207,4 +207,115 @@ class OfficeDocumentParserTest {
         assertEquals(pages.size, pages.last().pageNumber)
         assertEquals(pages.size, pages.first().totalPages)
     }
+
+    @Test
+    fun testExcelPaginatorWithA4LetterAndLegal() {
+        // Create sample sheet with 1 header row and 75 data rows
+        val header = listOf("ID", "Customer Name", "Order Amount", "Status")
+        val dataRows = (1..75).map { i ->
+            listOf("$i", "Customer #$i", "$${i * 15}.00", if (i % 2 == 0) "Completed" else "Pending")
+        }
+        val sheet = com.ct.explorer.utils.excel.ExcelSheet(
+            name = "Orders 2026",
+            rows = listOf(header) + dataRows,
+            maxColumns = 4
+        )
+
+        // 1. A4 Landscape (Default recommended for spreadsheets)
+        val a4LandscapePages = com.ct.explorer.utils.excel.ExcelPaginator.paginate(
+            sheet = sheet,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE
+        )
+        assertTrue(a4LandscapePages.size >= 3)
+        assertEquals(1, a4LandscapePages[0].pageNumber)
+        assertEquals(a4LandscapePages.size, a4LandscapePages[0].totalPages)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.A4, a4LandscapePages[0].paperSize)
+        assertEquals(com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE, a4LandscapePages[0].orientation)
+        assertEquals(header, a4LandscapePages[0].headerRow)
+        assertEquals(header, a4LandscapePages[1].headerRow) // Header repeated on page 2
+        assertTrue(a4LandscapePages[0].isFirstPage)
+        assertFalse(a4LandscapePages[1].isFirstPage)
+
+        // 2. Letter Landscape
+        val letterPages = com.ct.explorer.utils.excel.ExcelPaginator.paginate(
+            sheet = sheet,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.LETTER,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE
+        )
+        assertTrue(letterPages.size >= 3)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.LETTER, letterPages[0].paperSize)
+
+        // 3. Legal Landscape
+        val legalPages = com.ct.explorer.utils.excel.ExcelPaginator.paginate(
+            sheet = sheet,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.LEGAL,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE
+        )
+        assertTrue(legalPages.size >= 3)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.LEGAL, legalPages[0].paperSize)
+
+        // 4. Portrait format has more rows per page than landscape
+        val a4PortraitPages = com.ct.explorer.utils.excel.ExcelPaginator.paginate(
+            sheet = sheet,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertTrue(a4PortraitPages.size < a4LandscapePages.size)
+    }
+
+    @Test
+    fun testTextPaginatorWithA4LetterAndLegal() {
+        // Create 120 lines of sample source code or text
+        val textLines = (1..120).map { i ->
+            "fun processTask$i(): Result<String> = Result.success(\"Task #$i completed successfully\")"
+        }
+        val fullText = textLines.joinToString("\n")
+
+        // 1. A4 Portrait (Standard document layout)
+        val a4Pages = com.ct.explorer.utils.text.TextPaginator.paginate(
+            text = fullText,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertTrue(a4Pages.size >= 2)
+        assertEquals(1, a4Pages[0].pageNumber)
+        assertEquals(1, a4Pages[0].startLineNumber)
+        assertTrue(a4Pages[0].endLineNumber > 1)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.A4, a4Pages[0].paperSize)
+        assertEquals(com.ct.explorer.utils.docx.PageOrientation.PORTRAIT, a4Pages[0].orientation)
+        assertEquals(a4Pages.size, a4Pages[0].totalPages)
+        assertTrue(a4Pages[0].isFirstPage)
+        assertFalse(a4Pages[1].isFirstPage)
+
+        // Verify line continuity
+        assertEquals(a4Pages[0].endLineNumber + 1, a4Pages[1].startLineNumber)
+
+        // 2. Letter Portrait
+        val letterPages = com.ct.explorer.utils.text.TextPaginator.paginate(
+            text = fullText,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.LETTER,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertTrue(letterPages.size >= 2)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.LETTER, letterPages[0].paperSize)
+
+        // 3. Legal Portrait (Longer page fits more lines)
+        val legalPages = com.ct.explorer.utils.text.TextPaginator.paginate(
+            text = fullText,
+            paperSize = com.ct.explorer.utils.docx.PaperSize.LEGAL,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertTrue(legalPages.size <= a4Pages.size)
+        assertEquals(com.ct.explorer.utils.docx.PaperSize.LEGAL, legalPages[0].paperSize)
+
+        // 4. Empty text edge case
+        val emptyPages = com.ct.explorer.utils.text.TextPaginator.paginate(
+            text = "",
+            paperSize = com.ct.explorer.utils.docx.PaperSize.A4,
+            orientation = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        )
+        assertEquals(1, emptyPages.size)
+        assertEquals(1, emptyPages[0].pageNumber)
+    }
 }

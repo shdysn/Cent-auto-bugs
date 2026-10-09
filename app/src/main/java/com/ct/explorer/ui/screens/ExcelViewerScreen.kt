@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -48,7 +49,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ct.explorer.data.model.FileItem
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
 import com.ct.explorer.utils.FileOpener
+import com.ct.explorer.utils.docx.PageOrientation
+import com.ct.explorer.utils.docx.PaperSize
+import com.ct.explorer.utils.excel.ExcelPage
 import com.ct.explorer.utils.excel.ExcelParser
+import com.ct.explorer.utils.excel.ExcelPaginator
 import com.ct.explorer.utils.excel.ExcelSheet
 import com.ct.explorer.utils.excel.ExcelWorkbook
 import kotlinx.coroutines.Dispatchers
@@ -75,9 +80,14 @@ fun ExcelViewerScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Fullscreen & Original Page View states (opens in fullscreen by default)
+    // Physical Page & Paper Configuration (A4, Letter, Legal)
+    var selectedPaperSize by remember { mutableStateOf(PaperSize.A4) }
+    var selectedOrientation by remember { mutableStateOf(PageOrientation.LANDSCAPE) }
+    var showPrintSetupDialog by remember { mutableStateOf(false) }
+
+    // Fullscreen & Original Page View states (defaults to True for authentic A4/Letter/Legal print page layout)
     var isFullScreen by remember { mutableStateOf(true) }
-    var isOriginalPageView by remember { mutableStateOf(false) }
+    var isOriginalPageView by remember { mutableStateOf(true) }
 
     // Zoom & pan state for Original Page View
     var pageScale by remember { mutableFloatStateOf(1f) }
@@ -154,6 +164,12 @@ fun ExcelViewerScreen(
 
     val currentSheet: ExcelSheet? = workbook?.sheets?.getOrNull(selectedSheetIndex)
 
+    // Real Physical Pagination (A4, Letter, Legal)
+    val paginatedPages: List<ExcelPage> = remember(currentSheet, selectedPaperSize, selectedOrientation) {
+        if (currentSheet == null) emptyList()
+        else ExcelPaginator.paginate(currentSheet, selectedPaperSize, selectedOrientation)
+    }
+
     // Calculate auto stats for active sheet
     val sheetStats = remember(currentSheet) {
         if (currentSheet == null) null
@@ -185,7 +201,7 @@ fun ExcelViewerScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             if (isFullScreen) {
-                // Compact Fullscreen Header Bar with Back button & Original Page View button
+                // Compact Fullscreen Header Bar with Back, Print Setup & Original Page View buttons
                 Surface(
                     color = Color(0xFF0F172A).copy(alpha = 0.92f),
                     tonalElevation = 6.dp,
@@ -242,11 +258,23 @@ fun ExcelViewerScreen(
                                 .padding(horizontal = 10.dp)
                         )
 
-                        // Original Page View Button
+                        // Action Buttons: Print & Original Page View
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            // Print Button
+                            IconButton(
+                                onClick = { showPrintSetupDialog = true },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Print,
+                                    contentDescription = "Print / PDF Setup",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
                                 color = if (isOriginalPageView) ExcelGreen else Color.White.copy(alpha = 0.16f),
@@ -295,6 +323,86 @@ fun ExcelViewerScreen(
                                     contentDescription = "Show Full Toolbar",
                                     tint = Color.White
                                 )
+                            }
+                        }
+
+                        // Paper Size Quick Bar in Fullscreen
+                        if (isOriginalPageView) {
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.35f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Paper:",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White.copy(alpha = 0.85f)
+                                        )
+                                        PaperSize.values().forEach { size ->
+                                            val isSelected = selectedPaperSize == size
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (isSelected) ExcelGreen else Color.White.copy(alpha = 0.15f),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .clickable { selectedPaperSize = size }
+                                            ) {
+                                                Text(
+                                                    text = size.title,
+                                                    color = Color.White,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color.White.copy(alpha = 0.15f),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    selectedOrientation = if (selectedOrientation == PageOrientation.LANDSCAPE)
+                                                        PageOrientation.PORTRAIT else PageOrientation.LANDSCAPE
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (selectedOrientation == PageOrientation.PORTRAIT)
+                                                        Icons.Default.StayCurrentPortrait else Icons.Default.StayCurrentLandscape,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = selectedOrientation.title,
+                                                    fontSize = 11.sp,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -393,7 +501,7 @@ fun ExcelViewerScreen(
                         // Print / Save as PDF
                         if (file != null) {
                             IconButton(onClick = {
-                                com.ct.explorer.utils.PrintHelper.printFile(context, file)
+                                showPrintSetupDialog = true
                             }) {
                                 Icon(Icons.Default.Print, contentDescription = "Print / Save as PDF")
                             }
@@ -498,6 +606,120 @@ fun ExcelViewerScreen(
                                 .height(52.dp),
                             shape = RoundedCornerShape(24.dp)
                         )
+                    }
+                }
+            }
+
+            // Paper Size Quick Bar (when in original page view and not in fullscreen)
+            AnimatedVisibility(visible = isOriginalPageView && !isFullScreen) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Paper:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            PaperSize.values().forEach { size ->
+                                val isSelected = selectedPaperSize == size
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) ExcelGreen else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(1.dp, if (isSelected) ExcelGreen else MaterialTheme.colorScheme.outlineVariant),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { selectedPaperSize = size }
+                                ) {
+                                    Text(
+                                        text = size.title,
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Orientation toggle
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        selectedOrientation = if (selectedOrientation == PageOrientation.LANDSCAPE)
+                                            PageOrientation.PORTRAIT else PageOrientation.LANDSCAPE
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (selectedOrientation == PageOrientation.PORTRAIT)
+                                            Icons.Default.StayCurrentPortrait else Icons.Default.StayCurrentLandscape,
+                                        contentDescription = null,
+                                        tint = ExcelGreen,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = selectedOrientation.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            // Print Setup button
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = ExcelGreenLight,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { showPrintSetupDialog = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Print,
+                                        contentDescription = null,
+                                        tint = ExcelGreen,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Print Setup",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ExcelGreen
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -675,9 +897,22 @@ fun ExcelViewerScreen(
                     )
                 }
             } else if (isOriginalPageView) {
-                // ORIGINAL PAGE VIEW (Clean Print / Document Page Layout without A/B/C & 1/2/3 grid chrome)
-                val columnCount = currentSheet.maxColumns.coerceAtLeast(1)
-                val pageCellWidth = 136.dp
+                // AUTHENTIC PHYSICAL PAGE VIEW (A4, Letter, Legal Print Page Layout)
+                val maxPageWidth = if (selectedOrientation == PageOrientation.PORTRAIT) 640.dp else 860.dp
+                val minPageHeight = if (selectedOrientation == PageOrientation.PORTRAIT) {
+                    when (selectedPaperSize) {
+                        PaperSize.A4 -> 860.dp
+                        PaperSize.LETTER -> 800.dp
+                        PaperSize.LEGAL -> 1020.dp
+                    }
+                } else {
+                    when (selectedPaperSize) {
+                        PaperSize.A4 -> 590.dp
+                        PaperSize.LETTER -> 610.dp
+                        PaperSize.LEGAL -> 610.dp
+                    }
+                }
+                val pageCellWidth = 130.dp
 
                 Box(
                     modifier = Modifier
@@ -694,94 +929,127 @@ fun ExcelViewerScreen(
                                 translationX = pageOffset.x,
                                 translationY = pageOffset.y
                             ),
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        item {
+                        itemsIndexed(paginatedPages) { pageIdx, page ->
                             Surface(
-                                shape = RoundedCornerShape(4.dp),
+                                shape = RoundedCornerShape(2.dp),
                                 color = Color.White,
-                                shadowElevation = 6.dp,
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                modifier = Modifier.fillMaxWidth()
+                                shadowElevation = 8.dp,
+                                border = BorderStroke(1.dp, Color(0xFF94A3B8)),
+                                modifier = Modifier
+                                    .widthIn(max = maxPageWidth)
+                                    .fillMaxWidth()
+                                    .heightIn(min = minPageHeight)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(20.dp)
+                                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    // Original Page Document Header
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.Bottom
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = workbook?.title ?: file?.nameWithoutExtension ?: "Spreadsheet",
-                                                style = MaterialTheme.typography.titleLarge,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ExcelGreenDark
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Sheet: ${currentSheet.name}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFF475569),
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        Text(
-                                            text = "Original Page View",
-                                            fontSize = 11.sp,
-                                            color = ExcelGreen,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    HorizontalDivider(thickness = 2.dp, color = ExcelGreen)
-                                    Spacer(modifier = Modifier.height(14.dp))
-
-                                    // Clean Printed Page Table
-                                    Box(modifier = Modifier.horizontalScroll(pageHorizontalScrollState)) {
-                                        Column(
-                                            modifier = Modifier.border(1.dp, Color(0xFF94A3B8))
+                                    // Physical Page Header
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            currentSheet.rows.forEachIndexed { rowIndex, row ->
-                                                val isHeaderRow = rowIndex == 0
-                                                Row(
-                                                    modifier = Modifier.background(
-                                                        when {
-                                                            isHeaderRow -> Color(0xFFDCFCE7)
-                                                            rowIndex % 2 == 1 -> Color(0xFFF8FAFC)
-                                                            else -> Color.White
-                                                        }
-                                                    )
-                                                ) {
-                                                    for (colIndex in 0 until columnCount) {
-                                                        val cellText = row.getOrNull(colIndex).orEmpty()
-                                                        val isSearchMatch = searchQuery.isNotBlank() &&
-                                                            cellText.contains(searchQuery, ignoreCase = true)
+                                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                Text(
+                                                    text = workbook?.title ?: file?.nameWithoutExtension ?: "Spreadsheet",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ExcelGreenDark,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Sheet: ${page.sheetName}",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFF475569),
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                            Surface(
+                                                color = Color(0xFFDCFCE7),
+                                                shape = RoundedCornerShape(4.dp),
+                                                border = BorderStroke(0.5.dp, Color(0xFF86EFAC))
+                                            ) {
+                                                Text(
+                                                    text = "${selectedPaperSize.title} • ${selectedOrientation.title}",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = ExcelGreenDark,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        HorizontalDivider(thickness = 1.2.dp, color = ExcelGreen)
+                                        Spacer(modifier = Modifier.height(10.dp))
 
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .width(pageCellWidth)
-                                                                .heightIn(min = 36.dp)
-                                                                .background(if (isSearchMatch) Color(0xFFFEF08A) else Color.Transparent)
-                                                                .border(0.5.dp, Color(0xFF94A3B8))
-                                                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                                                            contentAlignment = Alignment.CenterStart
-                                                        ) {
-                                                            Text(
-                                                                text = cellText,
-                                                                fontSize = 12.sp,
-                                                                lineHeight = 16.sp,
-                                                                maxLines = 4,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                                color = if (isHeaderRow) Color(0xFF166534) else Color(0xFF0F172A),
-                                                                fontWeight = if (isHeaderRow) FontWeight.Bold else FontWeight.Normal
-                                                            )
+                                        // Sheet Table with repeated header row
+                                        Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                            Column(
+                                                modifier = Modifier.border(1.dp, Color(0xFF94A3B8))
+                                            ) {
+                                                // Repeated Header row
+                                                if (page.headerRow != null && page.headerRow.isNotEmpty()) {
+                                                    Row(modifier = Modifier.background(Color(0xFFDCFCE7))) {
+                                                        page.headerRow.forEach { cellText ->
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .width(pageCellWidth)
+                                                                    .border(0.5.dp, Color(0xFF86EFAC))
+                                                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                                contentAlignment = Alignment.CenterStart
+                                                            ) {
+                                                                Text(
+                                                                    text = cellText,
+                                                                    fontSize = 11.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color(0xFF166534),
+                                                                    maxLines = 2,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // Data rows for this page
+                                                page.rows.forEachIndexed { rIdx, row ->
+                                                    Row(
+                                                        modifier = Modifier.background(
+                                                            if (rIdx % 2 == 1) Color(0xFFF8FAFC) else Color.White
+                                                        )
+                                                    ) {
+                                                        val colCount = page.headerRow?.size ?: row.size
+                                                        for (colIndex in 0 until colCount) {
+                                                            val cellText = row.getOrNull(colIndex).orEmpty()
+                                                            val isMatch = searchQuery.isNotBlank() &&
+                                                                cellText.contains(searchQuery, ignoreCase = true)
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .width(pageCellWidth)
+                                                                    .heightIn(min = 32.dp)
+                                                                    .background(if (isMatch) Color(0xFFFEF08A) else Color.Transparent)
+                                                                    .border(0.5.dp, Color(0xFFCBD5E1))
+                                                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                                                contentAlignment = Alignment.CenterStart
+                                                            ) {
+                                                                Text(
+                                                                    text = cellText,
+                                                                    fontSize = 11.sp,
+                                                                    lineHeight = 15.sp,
+                                                                    maxLines = 3,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    color = Color(0xFF0F172A)
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -789,22 +1057,27 @@ fun ExcelViewerScreen(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "${currentSheet.rows.size} rows × ${currentSheet.maxColumns} columns",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF64748B)
-                                        )
-                                        Text(
-                                            text = "Page 1",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF64748B),
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                    // Physical Page Footer
+                                    Column(modifier = Modifier.padding(top = 16.dp)) {
+                                        HorizontalDivider(thickness = 0.8.dp, color = Color(0xFFE2E8F0))
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Sheet: ${page.sheetName} (Rows ${page.startRowIndex}–${page.endRowIndex})",
+                                                fontSize = 9.5.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                            Text(
+                                                text = "Page ${page.pageNumber} of ${paginatedPages.size}",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF475569)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -954,4 +1227,306 @@ fun ExcelViewerScreen(
             }
         }
     }
+
+    // Print & Page Setup Dialog (A4, Letter, Legal & Orientation for Android Print Spooler)
+    if (showPrintSetupDialog && file != null && workbook != null) {
+        PrintSpreadsheetSetupDialog(
+            workbook = workbook!!,
+            activeSheetIndex = selectedSheetIndex,
+            initialPaperSize = selectedPaperSize,
+            initialOrientation = selectedOrientation,
+            totalPages = paginatedPages.size,
+            onDismiss = { showPrintSetupDialog = false },
+            onConfirmPrint = { paperSize, orientation, printCurrentSheetOnly ->
+                selectedPaperSize = paperSize
+                selectedOrientation = orientation
+                showPrintSetupDialog = false
+                com.ct.explorer.utils.PrintHelper.printSpreadsheetFile(
+                    context = context,
+                    file = file,
+                    paperSize = paperSize,
+                    orientation = orientation,
+                    sheetIndex = if (printCurrentSheetOnly) selectedSheetIndex else null
+                )
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PrintSpreadsheetSetupDialog(
+    workbook: ExcelWorkbook,
+    activeSheetIndex: Int,
+    initialPaperSize: PaperSize,
+    initialOrientation: PageOrientation,
+    totalPages: Int,
+    onDismiss: () -> Unit,
+    onConfirmPrint: (PaperSize, PageOrientation, Boolean) -> Unit
+) {
+    var chosenPaperSize by remember { mutableStateOf(initialPaperSize) }
+    var chosenOrientation by remember { mutableStateOf(initialOrientation) }
+    var printCurrentSheetOnly by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = ExcelGreen,
+                    shape = CircleShape,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Print & Page Setup",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Native Android Print & Save to PDF",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Section 1: Paper Size (A4, Letter, Legal)
+                Text(
+                    text = "Paper Standard",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                PaperSize.values().forEach { size ->
+                    val isSelected = chosenPaperSize == size
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) ExcelGreen.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = BorderStroke(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) ExcelGreen else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { chosenPaperSize = size }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { chosenPaperSize = size },
+                                    colors = RadioButtonDefaults.colors(selectedColor = ExcelGreen)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = size.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = size.subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (isSelected) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = ExcelGreen,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "SELECTED",
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Section 2: Orientation (Landscape recommended for sheets)
+                Text(
+                    text = "Page Orientation",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    PageOrientation.values().forEach { orient ->
+                        val isSelected = chosenOrientation == orient
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) ExcelGreen.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) ExcelGreen else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { chosenOrientation = orient }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (orient == PageOrientation.PORTRAIT)
+                                        Icons.Default.StayCurrentPortrait else Icons.Default.StayCurrentLandscape,
+                                    contentDescription = null,
+                                    tint = if (isSelected) ExcelGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = orient.title,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) ExcelGreen else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (orient == PageOrientation.LANDSCAPE) {
+                                        Text(
+                                            text = "Best for Tables",
+                                            fontSize = 9.sp,
+                                            color = ExcelGreenDark,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Scope: Current Sheet vs All Sheets (if workbook has multiple sheets)
+                if (workbook.sheets.size > 1) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        text = "Sheet Scope",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (printCurrentSheetOnly) ExcelGreen.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, if (printCurrentSheetOnly) ExcelGreen else MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { printCurrentSheetOnly = true }
+                        ) {
+                            Text(
+                                text = "Current Sheet (${workbook.sheets.getOrNull(activeSheetIndex)?.name})",
+                                fontSize = 11.sp,
+                                fontWeight = if (printCurrentSheetOnly) FontWeight.Bold else FontWeight.Normal,
+                                color = if (printCurrentSheetOnly) ExcelGreen else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (!printCurrentSheetOnly) ExcelGreen.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, if (!printCurrentSheetOnly) ExcelGreen else MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { printCurrentSheetOnly = false }
+                        ) {
+                            Text(
+                                text = "All Sheets (${workbook.sheets.size})",
+                                fontSize = 11.sp,
+                                fontWeight = if (!printCurrentSheetOnly) FontWeight.Bold else FontWeight.Normal,
+                                color = if (!printCurrentSheetOnly) ExcelGreen else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Summary Card
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Print Summary",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Format: ${chosenPaperSize.title} (${chosenOrientation.title})\nDimensions: ${chosenPaperSize.subtitle.substringBefore(" •")}\nTotal Pages: ~$totalPages pages",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirmPrint(chosenPaperSize, chosenOrientation, printCurrentSheetOnly) },
+                colors = ButtonDefaults.buttonColors(containerColor = ExcelGreen)
+            ) {
+                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Print / Save as PDF")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
