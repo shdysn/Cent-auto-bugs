@@ -1944,6 +1944,48 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun connectGoogleDriveWithOAuthToken(token: String) {
+        viewModelScope.launch {
+            showMessage("Verifying Google Drive OAuth token...")
+            val probeDrive = NetworkDrive(
+                id = "probe_gdrive",
+                name = "Google Drive",
+                protocol = DriveProtocol.GOOGLE_DRIVE,
+                serverHost = "drive.google.com",
+                port = 443,
+                username = "Google Account",
+                password = token,
+                remotePath = "/My Drive"
+            )
+            val res = networkStorageRepository.testConnection(probeDrive)
+            res.fold(
+                onSuccess = { msg ->
+                    val userEmail = if (msg.contains(":")) {
+                        msg.substringAfter(":").substringBefore("(").trim()
+                    } else "Google Account"
+                    val newDrive = NetworkDrive(
+                        id = java.util.UUID.randomUUID().toString(),
+                        name = "Google Drive",
+                        protocol = DriveProtocol.GOOGLE_DRIVE,
+                        serverHost = "drive.google.com",
+                        port = 443,
+                        username = userEmail,
+                        password = token,
+                        remotePath = "/My Drive",
+                        lastConnected = System.currentTimeMillis()
+                    )
+                    networkStorageRepository.saveDrive(newDrive)
+                    loadNetworkDrives()
+                    showMessage("✓ Google Drive connected successfully ($userEmail)!")
+                    connectNetworkDrive(newDrive)
+                },
+                onFailure = { err ->
+                    showMessage("Google Drive Auth error: ${err.localizedMessage}")
+                }
+            )
+        }
+    }
+
     // ==========================================
     // 3. Fast Share (Direct Offline Wi-Fi P2P)
     // ==========================================

@@ -53,6 +53,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Intent Filter: Cloud OAuth 2.0 Web Redirect (Google Drive / OneDrive) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ctexplorer" android:host="oauth-callback" />
+            </intent-filter>
+
             <!-- Intent Filter: Video Player (When opening video from any file manager, gallery, WhatsApp, browser) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

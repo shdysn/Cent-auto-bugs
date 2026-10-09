@@ -133,6 +133,19 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // 0.5. Check Cloud OAuth 2.0 Web Redirect (ctexplorer://oauth-callback)
+        val dataUri = intent.data
+        if (dataUri != null && dataUri.scheme == "ctexplorer" && dataUri.host == "oauth-callback") {
+            val token = com.ct.explorer.utils.CloudOAuthHelper.extractToken(dataUri)
+            if (!token.isNullOrBlank()) {
+                viewModel.connectGoogleDriveWithOAuthToken(token)
+            } else {
+                val err = com.ct.explorer.utils.CloudOAuthHelper.extractError(dataUri)
+                viewModel.showMessage("OAuth Response: ${err ?: "No authorization token received"}")
+            }
+            return
+        }
+
         // 1. Check Home Screen Storage Widget Actions
         val widgetTarget = intent.getStringExtra(com.ct.explorer.widget.CtStorageWidgetProvider.EXTRA_WIDGET_TARGET)
         if (!widgetTarget.isNullOrBlank()) {

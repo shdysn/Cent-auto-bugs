@@ -37,6 +37,7 @@ fun NetworkDrivesScreen(
     viewModel: ExplorerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val drives by viewModel.networkDrives.collectAsStateWithLifecycle()
     val activeDrive by viewModel.activeNetworkDrive.collectAsStateWithLifecycle()
     val remoteFiles by viewModel.remoteFiles.collectAsStateWithLifecycle()
@@ -382,6 +383,42 @@ fun NetworkDrivesScreen(
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+
+                    if (proto == DriveProtocol.GOOGLE_DRIVE) {
+                        Button(
+                            onClick = {
+                                val url = com.ct.explorer.utils.CloudOAuthHelper.buildGoogleAuthUrl()
+                                val launched = com.ct.explorer.utils.CloudOAuthHelper.launchOAuth(context, url)
+                                if (launched) {
+                                    cloudAccountTarget = null
+                                    viewModel.showMessage("Opening Google Sign-In in browser...")
+                                } else {
+                                    viewModel.showMessage("Unable to launch web browser")
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = brandColor),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                        ) {
+                            Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sign in with Google (One-Click)")
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f))
+                            Text(
+                                text = " OR PASTE TOKEN ",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f))
                         }
                     }
 
