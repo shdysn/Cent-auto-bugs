@@ -106,11 +106,11 @@ else
     record_check "Local Sharing Services" "FAILED" "FTP or WebShare server missing."
 fi
 
-# 9. Home Screen Widget
-if [ -f "app/src/main/java/com/ct/explorer/widget/CtStorageWidgetProvider.kt" ] && [ -f "app/src/main/res/xml/ct_storage_widget_info.xml" ]; then
-    record_check "Home Screen Widget" "PASSED" "CtStorageWidgetProvider and AppWidgetProvider metadata configured."
+# 9. Home Screen Widgets (Storage & Video Player)
+if [ -f "app/src/main/java/com/ct/explorer/widget/CtStorageWidgetProvider.kt" ] && [ -f "app/src/main/java/com/ct/explorer/widget/CtVideoWidgetProvider.kt" ] && [ -f "app/src/main/res/xml/ct_video_widget_info.xml" ]; then
+    record_check "Home Screen Widgets" "PASSED" "CtStorageWidgetProvider and CtVideoWidgetProvider metadata configured."
 else
-    record_check "Home Screen Widget" "FAILED" "AppWidgetProvider files missing."
+    record_check "Home Screen Widgets" "FAILED" "AppWidgetProvider files missing."
 fi
 
 # 10. In-App Package Installer API

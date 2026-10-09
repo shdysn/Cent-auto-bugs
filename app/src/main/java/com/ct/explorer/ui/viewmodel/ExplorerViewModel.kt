@@ -1,6 +1,7 @@
 package com.ct.explorer.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1730,6 +1731,43 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         val prevIdx = if (state.currentIndex > 0) state.currentIndex - 1 else state.playlist.lastIndex
         val prevItem = state.playlist[prevIdx]
         playVideo(prevItem, state.playlist)
+    }
+
+    /**
+     * Launched from Home Screen / Desktop Video Player Widget.
+     * Loads videos from storage and starts playback directly in the built-in video player.
+     */
+    fun launchVideoPlayerFromWidget() {
+        viewModelScope.launch {
+            try {
+                val videos = fileRepository.getCategoryFiles(FileCategory.VIDEO)
+                if (videos.isNotEmpty()) {
+                    val firstVideo = videos.first()
+                    playVideo(firstVideo, videos)
+                } else {
+                    openCategory(FileCategory.VIDEO, "Videos")
+                }
+            } catch (_: Exception) {
+                openCategory(FileCategory.VIDEO, "Videos")
+            }
+        }
+    }
+
+    /**
+     * Send / Pin the Video Player Widget to user's desktop / home screen.
+     */
+    fun pinVideoPlayerWidget(context: Context) {
+        val ok = com.ct.explorer.utils.ShortcutHelper.requestPinVideoWidget(context)
+        if (ok) {
+            showMessage("Video Player Widget prompt opened! Tap 'Add' to place on desktop.")
+        } else {
+            val shortcutOk = com.ct.explorer.utils.ShortcutHelper.pinVideoPlayerShortcut(context)
+            if (shortcutOk) {
+                showMessage("Video Player shortcut sent to desktop!")
+            } else {
+                showMessage("To add widget: Long-press Home Screen -> Widgets -> Cent File Manager -> Cent Video Player")
+            }
+        }
     }
 
     // ==========================================

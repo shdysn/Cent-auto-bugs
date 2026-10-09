@@ -48,6 +48,7 @@ fun MiToolsBottomSheet(
     isDualPaneActive: Boolean = false,
     onSocialClick: () -> Unit = {},
     onPinWidgetClick: () -> Unit = {},
+    onPinVideoWidgetClick: () -> Unit = {},
     onWebShareClick: () -> Unit = {},
     onFileShredderClick: () -> Unit = {},
     onSmartCollectionsClick: () -> Unit = {},
@@ -70,6 +71,7 @@ fun MiToolsBottomSheet(
     isDualPaneActive = isDualPaneActive,
     onSocialClick = onSocialClick,
     onPinWidgetClick = onPinWidgetClick,
+    onPinVideoWidgetClick = onPinVideoWidgetClick,
     onWebShareClick = onWebShareClick,
     onFileShredderClick = onFileShredderClick,
     onSmartCollectionsClick = onSmartCollectionsClick,
@@ -96,6 +98,7 @@ fun CtToolsBottomSheet(
     isDualPaneActive: Boolean = false,
     onSocialClick: () -> Unit = {},
     onPinWidgetClick: () -> Unit = {},
+    onPinVideoWidgetClick: () -> Unit = {},
     onWebShareClick: () -> Unit = {},
     onFileShredderClick: () -> Unit = {},
     onSmartCollectionsClick: () -> Unit = {},
@@ -113,9 +116,17 @@ fun CtToolsBottomSheet(
             onClick = { onDismiss(); onDiagnosticsClick() }
         ),
         ToolItem(
+            id = "video_widget",
+            title = "Video Player Widget",
+            subtitle = "Send player to desktop",
+            icon = Icons.Default.PlayCircle,
+            iconColor = Color(0xFF00B0FF),
+            onClick = { onDismiss(); onPinVideoWidgetClick() }
+        ),
+        ToolItem(
             id = "home_widget",
-            title = "Home Screen Widget",
-            subtitle = "Add live storage widget",
+            title = "Storage Widget",
+            subtitle = "Add storage widget to desktop",
             icon = Icons.Default.Widgets,
             iconColor = Color(0xFF0EA5E9),
             onClick = { onDismiss(); onPinWidgetClick() }

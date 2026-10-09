@@ -871,6 +871,9 @@ fun MainScreen(
                 val ok = com.ct.explorer.utils.ShortcutHelper.requestPinStorageWidget(context)
                 viewModel.showMessage(if (ok) "Home Screen Storage Widget prompt opened!" else "Long-press Home Screen -> Widgets -> Cent File Manager")
             },
+            onPinVideoWidgetClick = {
+                viewModel.pinVideoPlayerWidget(context)
+            },
             onWebShareClick = { viewModel.openWebShare() },
             onFileShredderClick = { viewModel.openFileShredder() },
             onSmartCollectionsClick = { viewModel.openSmartCollections() },

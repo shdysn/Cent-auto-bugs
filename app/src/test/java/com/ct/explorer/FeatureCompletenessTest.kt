@@ -102,4 +102,11 @@ class FeatureCompletenessTest {
         assertEquals(hashResult1.getOrNull()?.md5, hashResult2.getOrNull()?.md5)
         assertEquals(hashResult1.getOrNull()?.sha256, hashResult2.getOrNull()?.sha256)
     }
+
+    @Test
+    fun testVideoPlayerWidgetConstantsAndConfiguration() {
+        assertEquals("EXTRA_WIDGET_TARGET", com.ct.explorer.widget.CtVideoWidgetProvider.EXTRA_WIDGET_TARGET)
+        assertEquals("VIDEO_PLAYER", com.ct.explorer.widget.CtVideoWidgetProvider.TARGET_VIDEO_PLAYER)
+        assertEquals("VIDEO_GALLERY", com.ct.explorer.widget.CtVideoWidgetProvider.TARGET_VIDEO_GALLERY)
+    }
 }

@@ -1230,6 +1230,19 @@ fun VideoPlayerScreen(
                             )
                         }
 
+                        // Desktop Widget Pin Button
+                        IconButton(
+                            onClick = { viewModel.pinVideoPlayerWidget(context) },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Widgets,
+                                contentDescription = "Pin Player to Desktop",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
                         // Pro Tools & Settings Sheet
                         IconButton(
                             onClick = { showPowerfulPlaybackSheet = true },
@@ -1953,6 +1966,40 @@ fun VideoPlayerScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Move to Private Vault", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
                             Text("Secure this video with biometric / PIN encryption", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                // 8. Desktop Video Player Widget Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MxCardDark,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showPowerfulPlaybackSheet = false
+                            viewModel.pinVideoPlayerWidget(context)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF00B0FF).copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Widgets, contentDescription = null, tint = Color(0xFF00B0FF), modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Send Widget to Desktop", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Place video player widget on your home screen", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
                         }
                         Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
                     }

@@ -160,8 +160,9 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // 1. Check Home Screen Storage Widget Actions
+        // 1. Check Home Screen Widget Actions (Storage or Video Player)
         val widgetTarget = intent.getStringExtra(com.ct.explorer.widget.CtStorageWidgetProvider.EXTRA_WIDGET_TARGET)
+            ?: intent.getStringExtra(com.ct.explorer.widget.CtVideoWidgetProvider.EXTRA_WIDGET_TARGET)
         if (!widgetTarget.isNullOrBlank()) {
             when (widgetTarget) {
                 com.ct.explorer.widget.CtStorageWidgetProvider.TARGET_CLEANER -> viewModel.openCleaner()
@@ -169,6 +170,12 @@ class MainActivity : ComponentActivity() {
                 com.ct.explorer.widget.CtStorageWidgetProvider.TARGET_STORAGE -> {
                     viewModel.selectTab(com.ct.explorer.ui.components.CtTab.STORAGE)
                     viewModel.navigateToScreen(Screen.MAIN)
+                }
+                com.ct.explorer.widget.CtVideoWidgetProvider.TARGET_VIDEO_PLAYER -> {
+                    viewModel.launchVideoPlayerFromWidget()
+                }
+                com.ct.explorer.widget.CtVideoWidgetProvider.TARGET_VIDEO_GALLERY -> {
+                    viewModel.openCategory(com.ct.explorer.data.model.FileCategory.VIDEO, "Videos")
                 }
             }
             return

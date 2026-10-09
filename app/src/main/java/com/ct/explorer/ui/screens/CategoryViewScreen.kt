@@ -168,6 +168,17 @@ fun CategoryViewScreen(
                     IconButton(onClick = { showCategorySort = true }) {
                         Icon(Icons.Default.Sort, contentDescription = "Sort", tint = CtOrange)
                     }
+                    if (state.category == FileCategory.VIDEO) {
+                        FilledTonalButton(
+                            onClick = { viewModel.pinVideoPlayerWidget(context) },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Widgets, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF00B0FF))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Desktop Widget", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                     if (state.category == FileCategory.APK) {
                         FilledTonalButton(
                             onClick = { viewModel.openAppInstaller() },
