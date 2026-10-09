@@ -242,7 +242,8 @@ fun NetworkDrivesScreen(
                                 cloudAccountTarget = Triple("Google Drive", DriveProtocol.GOOGLE_DRIVE, "/My Drive")
                             },
                             onBrowse = { drive -> viewModel.connectNetworkDrive(drive) },
-                            onDisconnect = { drive -> viewModel.deleteNetworkDrive(drive.id) }
+                            onDisconnect = { drive -> viewModel.deleteNetworkDrive(drive.id) },
+                            onTest = { drive -> viewModel.testNetworkDriveConnection(drive) }
                         )
 
                         CloudDriveOAuthCard(
@@ -257,7 +258,8 @@ fun NetworkDrivesScreen(
                                 cloudAccountTarget = Triple("Microsoft OneDrive", DriveProtocol.ONEDRIVE, "/Documents")
                             },
                             onBrowse = { drive -> viewModel.connectNetworkDrive(drive) },
-                            onDisconnect = { drive -> viewModel.deleteNetworkDrive(drive.id) }
+                            onDisconnect = { drive -> viewModel.deleteNetworkDrive(drive.id) },
+                            onTest = { drive -> viewModel.testNetworkDriveConnection(drive) }
                         )
 
                         CloudDriveOAuthCard(
@@ -272,7 +274,8 @@ fun NetworkDrivesScreen(
                                 cloudAccountTarget = Triple("Dropbox", DriveProtocol.DROPBOX, "/Personal")
                             },
                             onBrowse = { drive -> viewModel.connectNetworkDrive(drive) },
-                            onDisconnect = { drive -> viewModel.deleteNetworkDrive(drive.id) }
+                            onDisconnect = { drive -> viewModel.deleteNetworkDrive(drive.id) },
+                            onTest = { drive -> viewModel.testNetworkDriveConnection(drive) }
                         )
                     }
                 }
@@ -327,29 +330,83 @@ fun NetworkDrivesScreen(
     }
 
     cloudAccountTarget?.let { (brandName, proto, defaultPath) ->
+        val brandColor = when (proto) {
+            DriveProtocol.GOOGLE_DRIVE -> Color(0xFF4285F4)
+            DriveProtocol.ONEDRIVE -> Color(0xFF0078D4)
+            DriveProtocol.DROPBOX -> Color(0xFF0061FF)
+            else -> CtOrange
+        }
+
         AlertDialog(
             onDismissRequest = { cloudAccountTarget = null },
-            title = { Text("Connect $brandName") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = when (proto) {
+                            DriveProtocol.GOOGLE_DRIVE -> Icons.Default.Cloud
+                            DriveProtocol.ONEDRIVE -> Icons.Default.CloudDone
+                            else -> Icons.Default.Inventory2
+                        },
+                        contentDescription = null,
+                        tint = brandColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Connect $brandName")
+                }
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Enter your $brandName account email and optional OAuth / App Password token to mount your cloud workspace.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Surface(
+                        color = brandColor.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Real Cloud Sync Guide:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = brandColor
+                            )
+                            Text(
+                                text = when (proto) {
+                                    DriveProtocol.GOOGLE_DRIVE ->
+                                        "To view REAL Google Drive files, enter an OAuth Access Token (from Google Cloud Console or OAuth Playground with Drive v3 scope). If blank, offline demo mode is mounted."
+                                    DriveProtocol.ONEDRIVE ->
+                                        "To view REAL OneDrive files, enter an Access Token (from Microsoft Graph Explorer or Azure AD with Files.Read scope). If blank, offline demo mode is mounted."
+                                    DriveProtocol.DROPBOX ->
+                                        "To view REAL Dropbox files, enter an Access Token (from Dropbox App Console). If blank, offline demo mode is mounted."
+                                    else -> "Enter your OAuth Bearer Token."
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
                         value = cloudEmailInput,
                         onValueChange = { cloudEmailInput = it },
                         label = { Text("Account Email") },
-                        placeholder = { Text("name@example.com") },
+                        placeholder = { Text("user@example.com") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
                     OutlinedTextField(
                         value = cloudTokenInput,
                         onValueChange = { cloudTokenInput = it },
-                        label = { Text("App Password / Access Token (Optional)") },
-                        singleLine = true,
+                        label = { Text("OAuth 2.0 Access Token") },
+                        placeholder = { Text("Paste Bearer token for live files") },
+                        supportingText = {
+                            Text(
+                                if (cloudTokenInput.isBlank()) "Leave blank to connect in Demo Mode" else "✓ Live Cloud API connection active",
+                                color = if (cloudTokenInput.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF047857)
+                            )
+                        },
+                        singleLine = false,
+                        maxLines = 3,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -357,7 +414,7 @@ fun NetworkDrivesScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val email = cloudEmailInput.trim().ifEmpty { "connected@${brandName.lowercase().replace(" ", "")}.com" }
+                        val email = cloudEmailInput.trim().ifEmpty { "user@${brandName.lowercase().replace(" ", "")}.com" }
                         val host = when (proto) {
                             DriveProtocol.GOOGLE_DRIVE -> "drive.google.com"
                             DriveProtocol.ONEDRIVE -> "onedrive.live.com"
@@ -379,9 +436,9 @@ fun NetworkDrivesScreen(
                         )
                         cloudAccountTarget = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CtOrange)
+                    colors = ButtonDefaults.buttonColors(containerColor = brandColor)
                 ) {
-                    Text("Connect Account")
+                    Text(if (cloudTokenInput.isNotBlank()) "Connect Live Cloud" else "Connect Demo Drive")
                 }
             },
             dismissButton = {
@@ -755,8 +812,11 @@ fun CloudDriveOAuthCard(
     connectedDrive: NetworkDrive?,
     onConnect: () -> Unit,
     onBrowse: (NetworkDrive) -> Unit,
-    onDisconnect: (NetworkDrive) -> Unit
+    onDisconnect: (NetworkDrive) -> Unit,
+    onTest: (NetworkDrive) -> Unit = {}
 ) {
+    val isLive = connectedDrive != null && connectedDrive.password.isNotBlank()
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -788,18 +848,26 @@ fun CloudDriveOAuthCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = if (connectedDrive != null) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+                            color = if (connectedDrive != null) {
+                                if (isLive) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFFF59E0B).copy(alpha = 0.15f)
+                            } else MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Text(
-                                text = if (connectedDrive != null) "OAuth Connected" else "OAuth 2.0",
-                                color = if (connectedDrive != null) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = if (connectedDrive != null) {
+                                    if (isLive) "Live API Connected" else "Demo Mode"
+                                } else "OAuth 2.0",
+                                color = if (connectedDrive != null) {
+                                    if (isLive) Color(0xFF047857) else Color(0xFFB45309)
+                                } else MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
                     Text(
-                        text = if (connectedDrive != null) connectedDrive.username else "Sync, stream & browse cloud files",
+                        text = if (connectedDrive != null) {
+                            if (isLive) "${connectedDrive.username} • Live Sync" else "${connectedDrive.username} • Offline Demo"
+                        } else "Sync, stream & browse cloud files",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -814,7 +882,7 @@ fun CloudDriveOAuthCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Cloud Storage Quota",
+                            text = if (isLive) "Cloud Storage Quota (Live)" else "Cloud Storage Quota (Demo)",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -844,18 +912,25 @@ fun CloudDriveOAuthCard(
                         onClick = { onBrowse(connectedDrive) },
                         colors = ButtonDefaults.buttonColors(containerColor = brandColor),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f).height(38.dp)
+                        modifier = Modifier.weight(1.3f).height(38.dp)
                     ) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Browse Files")
                     }
                     OutlinedButton(
+                        onClick = { onTest(connectedDrive) },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.height(38.dp)
+                    ) {
+                        Text("Test", fontSize = 12.sp)
+                    }
+                    OutlinedButton(
                         onClick = { onDisconnect(connectedDrive) },
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.height(38.dp)
                     ) {
-                        Text("Disconnect", color = Color(0xFFEF4444))
+                        Text("Disconnect", color = Color(0xFFEF4444), fontSize = 12.sp)
                     }
                 }
             } else {

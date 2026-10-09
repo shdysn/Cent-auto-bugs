@@ -110,7 +110,17 @@ class NetworkStorageRepository(private val context: Context) {
 
     suspend fun testConnection(drive: NetworkDrive): Result<String> = withContext(Dispatchers.IO) {
         if (drive.isCloudOAuth) {
-            return@withContext Result.success("OAuth 2.0 active for ${drive.username} (${drive.name})")
+            val token = drive.password.trim()
+            if (token.isNotEmpty()) {
+                return@withContext when (drive.protocol) {
+                    DriveProtocol.GOOGLE_DRIVE -> testGoogleDrive(token)
+                    DriveProtocol.ONEDRIVE -> testOneDrive(token)
+                    DriveProtocol.DROPBOX -> testDropbox(token)
+                    else -> Result.success("OAuth active for ${drive.username}")
+                }
+            } else {
+                return@withContext Result.success("Simulated demo mode active for ${drive.username} (Add an Access Token for live sync)")
+            }
         }
         try {
             // Attempt socket connection test
@@ -138,10 +148,104 @@ class NetworkStorageRepository(private val context: Context) {
         }
     }
 
+    private fun testGoogleDrive(token: String): Result<String> {
+        return try {
+            val url = URL("https://www.googleapis.com/drive/v3/about?fields=user,storageQuota")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.connectTimeout = 6000
+            conn.readTimeout = 6000
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val json = conn.inputStream.bufferedReader().readText()
+                val obj = JSONObject(json)
+                val user = obj.optJSONObject("user")
+                val name = user?.optString("displayName") ?: user?.optString("emailAddress") ?: "Google User"
+                val quota = obj.optJSONObject("storageQuota")
+                val used = quota?.optLong("usage", 0L) ?: 0L
+                val total = quota?.optLong("limit", 0L) ?: 0L
+                val usedStr = com.ct.explorer.data.model.FileItem.formatBytes(used)
+                val totalStr = if (total > 0) com.ct.explorer.data.model.FileItem.formatBytes(total) else "Unlimited"
+                Result.success("Connected to live Google Drive: $name ($usedStr / $totalStr)")
+            } else {
+                val err = conn.errorStream?.bufferedReader()?.readText() ?: "HTTP $code"
+                Result.failure(Exception("Google Drive Auth: HTTP $code ($err)"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Cannot reach Google Drive: ${e.localizedMessage}"))
+        }
+    }
+
+    private fun testOneDrive(token: String): Result<String> {
+        return try {
+            val url = URL("https://graph.microsoft.com/v1.0/me/drive")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.connectTimeout = 6000
+            conn.readTimeout = 6000
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val json = conn.inputStream.bufferedReader().readText()
+                val obj = JSONObject(json)
+                val owner = obj.optJSONObject("owner")?.optJSONObject("user")
+                val name = owner?.optString("displayName") ?: "OneDrive User"
+                val quota = obj.optJSONObject("quota")
+                val used = quota?.optLong("used", 0L) ?: 0L
+                val total = quota?.optLong("total", 0L) ?: 0L
+                val usedStr = com.ct.explorer.data.model.FileItem.formatBytes(used)
+                val totalStr = if (total > 0) com.ct.explorer.data.model.FileItem.formatBytes(total) else "Unlimited"
+                Result.success("Connected to live OneDrive: $name ($usedStr / $totalStr)")
+            } else {
+                val err = conn.errorStream?.bufferedReader()?.readText() ?: "HTTP $code"
+                Result.failure(Exception("OneDrive Auth: HTTP $code ($err)"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Cannot reach OneDrive: ${e.localizedMessage}"))
+        }
+    }
+
+    private fun testDropbox(token: String): Result<String> {
+        return try {
+            val url = URL("https://api.dropboxapi.com/2/users/get_current_account")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.connectTimeout = 6000
+            conn.readTimeout = 6000
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val json = conn.inputStream.bufferedReader().readText()
+                val obj = JSONObject(json)
+                val email = obj.optString("email", "Dropbox User")
+                Result.success("Connected to live Dropbox: $email")
+            } else {
+                val err = conn.errorStream?.bufferedReader()?.readText() ?: "HTTP $code"
+                Result.failure(Exception("Dropbox Auth: HTTP $code ($err)"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Cannot reach Dropbox: ${e.localizedMessage}"))
+        }
+    }
+
     suspend fun listRemoteFiles(drive: NetworkDrive, subPath: String): List<RemoteFileItem> = withContext(Dispatchers.IO) {
         val path = if (subPath.startsWith("/")) subPath else "/$subPath"
 
         if (drive.isCloudOAuth) {
+            val token = drive.password.trim()
+            if (token.isNotEmpty()) {
+                val liveList = when (drive.protocol) {
+                    DriveProtocol.GOOGLE_DRIVE -> fetchGoogleDriveFiles(token, path)
+                    DriveProtocol.ONEDRIVE -> fetchOneDriveFiles(token, path)
+                    DriveProtocol.DROPBOX -> fetchDropboxFiles(token, path)
+                    else -> emptyList()
+                }
+                if (liveList.isNotEmpty()) {
+                    return@withContext liveList
+                }
+            }
+
             val base = if (path == "/" || path.isEmpty()) "" else path
             return@withContext when (drive.protocol) {
                 DriveProtocol.GOOGLE_DRIVE -> listOf(
@@ -404,6 +508,19 @@ class NetworkStorageRepository(private val context: Context) {
                 } catch (_: Exception) {}
             }
 
+            if (drive.isCloudOAuth && drive.password.isNotBlank()) {
+                val token = drive.password.trim()
+                val liveDownloadResult = when (drive.protocol) {
+                    DriveProtocol.GOOGLE_DRIVE -> downloadGoogleDriveFile(token, item, targetFile, onProgress)
+                    DriveProtocol.ONEDRIVE -> downloadOneDriveFile(token, item, targetFile, onProgress)
+                    DriveProtocol.DROPBOX -> downloadDropboxFile(token, item, targetFile, onProgress)
+                    else -> null
+                }
+                if (liveDownloadResult != null) {
+                    return@withContext liveDownloadResult
+                }
+            }
+
             val scheme = if (drive.port == 443) "https" else "http"
             val url = URL("$scheme://${drive.serverHost}:${drive.port}$itemPath")
             val conn = url.openConnection() as HttpURLConnection
@@ -484,5 +601,253 @@ class NetworkStorageRepository(private val context: Context) {
             )
         }
         return list.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+    }
+
+    private fun fetchGoogleDriveFiles(token: String, path: String): List<RemoteFileItem> {
+        return try {
+            val query = if (path == "/" || path.isBlank() || path == "/My Drive") {
+                "trashed=false and 'root' in parents"
+            } else {
+                val folderId = path.trim('/').substringAfterLast('/')
+                "trashed=false and '$folderId' in parents"
+            }
+            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = URL("https://www.googleapis.com/drive/v3/files?pageSize=100&fields=files(id,name,mimeType,size,modifiedTime)&q=$encodedQuery&orderBy=folder,name")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 12000
+            if (conn.responseCode in 200..299) {
+                val json = conn.inputStream.bufferedReader().readText()
+                val obj = JSONObject(json)
+                val files = obj.optJSONArray("files") ?: JSONArray()
+                val list = mutableListOf<RemoteFileItem>()
+                for (i in 0 until files.length()) {
+                    val f = files.getJSONObject(i)
+                    val id = f.optString("id")
+                    val name = f.optString("name", "Untitled")
+                    val mime = f.optString("mimeType", "")
+                    val isDir = mime == "application/vnd.google-apps.folder"
+                    val size = f.optLong("size", 0L)
+                    list.add(
+                        RemoteFileItem(
+                            name = name,
+                            path = if (isDir) "/$id" else id,
+                            isDirectory = isDir,
+                            size = size,
+                            lastModified = System.currentTimeMillis()
+                        )
+                    )
+                }
+                list.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            } else {
+                emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun fetchOneDriveFiles(token: String, path: String): List<RemoteFileItem> {
+        return try {
+            val endpoint = if (path == "/" || path.isBlank() || path == "/Documents") {
+                "https://graph.microsoft.com/v1.0/me/drive/root/children"
+            } else {
+                val itemId = path.trim('/').substringAfterLast('/')
+                "https://graph.microsoft.com/v1.0/me/drive/items/$itemId/children"
+            }
+            val url = URL(endpoint)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 12000
+            if (conn.responseCode in 200..299) {
+                val json = conn.inputStream.bufferedReader().readText()
+                val obj = JSONObject(json)
+                val files = obj.optJSONArray("value") ?: JSONArray()
+                val list = mutableListOf<RemoteFileItem>()
+                for (i in 0 until files.length()) {
+                    val f = files.getJSONObject(i)
+                    val id = f.optString("id")
+                    val name = f.optString("name", "Untitled")
+                    val isDir = f.has("folder")
+                    val size = f.optLong("size", 0L)
+                    list.add(
+                        RemoteFileItem(
+                            name = name,
+                            path = if (isDir) "/$id" else id,
+                            isDirectory = isDir,
+                            size = size,
+                            lastModified = System.currentTimeMillis()
+                        )
+                    )
+                }
+                list.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            } else {
+                emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun fetchDropboxFiles(token: String, path: String): List<RemoteFileItem> {
+        return try {
+            val url = URL("https://api.dropboxapi.com/2/files/list_folder")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            conn.doOutput = true
+            conn.connectTimeout = 8000
+            conn.readTimeout = 12000
+            val cleanPath = if (path == "/" || path == "/Personal") "" else path.trimEnd('/')
+            val jsonPayload = JSONObject().apply {
+                put("path", cleanPath)
+                put("recursive", false)
+            }.toString()
+            conn.outputStream.bufferedWriter().use { it.write(jsonPayload) }
+            if (conn.responseCode in 200..299) {
+                val json = conn.inputStream.bufferedReader().readText()
+                val entries = JSONObject(json).optJSONArray("entries") ?: JSONArray()
+                val list = mutableListOf<RemoteFileItem>()
+                for (i in 0 until entries.length()) {
+                    val entry = entries.getJSONObject(i)
+                    val tag = entry.optString(".tag")
+                    val name = entry.optString("name", "Untitled")
+                    val entryPath = entry.optString("path_lower", "/$name")
+                    val isDir = tag == "folder"
+                    val size = entry.optLong("size", 0L)
+                    list.add(
+                        RemoteFileItem(
+                            name = name,
+                            path = entryPath,
+                            isDirectory = isDir,
+                            size = size,
+                            lastModified = System.currentTimeMillis()
+                        )
+                    )
+                }
+                list.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            } else {
+                emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun downloadGoogleDriveFile(
+        token: String,
+        item: RemoteFileItem,
+        targetFile: File,
+        onProgress: (Float) -> Unit
+    ): Result<File>? {
+        return try {
+            val fileId = item.path.trim('/')
+            val url = URL("https://www.googleapis.com/drive/v3/files/$fileId?alt=media")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 20000
+            if (conn.responseCode in 200..299) {
+                val totalLength = conn.contentLengthLong.coerceAtLeast(1L)
+                var downloaded = 0L
+                conn.inputStream.use { input ->
+                    java.io.FileOutputStream(targetFile).use { output ->
+                        val buf = ByteArray(32 * 1024)
+                        var r: Int
+                        while (input.read(buf).also { r = it } != -1) {
+                            output.write(buf, 0, r)
+                            downloaded += r
+                            onProgress((downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f))
+                        }
+                        output.flush()
+                    }
+                }
+                Result.success(targetFile)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun downloadOneDriveFile(
+        token: String,
+        item: RemoteFileItem,
+        targetFile: File,
+        onProgress: (Float) -> Unit
+    ): Result<File>? {
+        return try {
+            val itemId = item.path.trim('/')
+            val url = URL("https://graph.microsoft.com/v1.0/me/drive/items/$itemId/content")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 20000
+            if (conn.responseCode in 200..299) {
+                val totalLength = conn.contentLengthLong.coerceAtLeast(1L)
+                var downloaded = 0L
+                conn.inputStream.use { input ->
+                    java.io.FileOutputStream(targetFile).use { output ->
+                        val buf = ByteArray(32 * 1024)
+                        var r: Int
+                        while (input.read(buf).also { r = it } != -1) {
+                            output.write(buf, 0, r)
+                            downloaded += r
+                            onProgress((downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f))
+                        }
+                        output.flush()
+                    }
+                }
+                Result.success(targetFile)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun downloadDropboxFile(
+        token: String,
+        item: RemoteFileItem,
+        targetFile: File,
+        onProgress: (Float) -> Unit
+    ): Result<File>? {
+        return try {
+            val url = URL("https://content.dropboxapi.com/2/files/download")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Dropbox-API-Arg", "{\"path\": \"${item.path}\"}")
+            conn.connectTimeout = 8000
+            conn.readTimeout = 20000
+            if (conn.responseCode in 200..299) {
+                val totalLength = conn.contentLengthLong.coerceAtLeast(1L)
+                var downloaded = 0L
+                conn.inputStream.use { input ->
+                    java.io.FileOutputStream(targetFile).use { output ->
+                        val buf = ByteArray(32 * 1024)
+                        var r: Int
+                        while (input.read(buf).also { r = it } != -1) {
+                            output.write(buf, 0, r)
+                            downloaded += r
+                            onProgress((downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f))
+                        }
+                        output.flush()
+                    }
+                }
+                Result.success(targetFile)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 }
