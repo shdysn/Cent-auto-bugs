@@ -53,7 +53,7 @@ fun MsWordPageSheet(
     Surface(
         shape = RoundedCornerShape(2.dp),
         color = Color.White,
-        shadowElevation = 6.dp,
+        shadowElevation = 8.dp,
         border = BorderStroke(0.75.dp, WordPageShadowBorder),
         modifier = modifier
             .fillMaxWidth()
@@ -107,7 +107,7 @@ fun MsWordPageSheet(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(
-                            text = "${page.paperSize.title} • ${page.orientation.title}",
+                            text = "${page.paperSize.formattedSize} • ${page.orientation.title}",
                             fontSize = 8.5.sp,
                             color = WordHeaderFooterText.copy(alpha = 0.8f)
                         )
@@ -215,7 +215,7 @@ fun MsWordPageSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = documentTitle,
+                            text = if (documentTitle.isNotBlank()) documentTitle else "دستاویز",
                             fontSize = 9.sp,
                             color = WordHeaderFooterText,
                             maxLines = 1,
@@ -223,7 +223,7 @@ fun MsWordPageSheet(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(
-                            text = "Page ${page.pageNumber} of ${page.totalPages}",
+                            text = "صفحہ ${page.pageNumber} از ${page.totalPages} • Page ${page.pageNumber} of ${page.totalPages}",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = WordHeaderFooterText

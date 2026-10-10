@@ -359,4 +359,33 @@ class OfficeDocumentParserTest {
         assertEquals(wide, widePages[0].margins)
         assertTrue("Wide margins should produce more or equal pages than narrow margins", widePages.size >= narrowPages.size)
     }
+
+    @Test
+    fun testPhysicalPaperSizeDimensionsAndFormatting() {
+        val a4 = com.ct.explorer.utils.docx.PaperSize.A4
+        val letter = com.ct.explorer.utils.docx.PaperSize.LETTER
+        val legal = com.ct.explorer.utils.docx.PaperSize.LEGAL
+
+        // Dimensions
+        assertEquals(210f, a4.widthMm, 0.01f)
+        assertEquals(297f, a4.heightMm, 0.01f)
+        assertEquals("A4 (210 × 297 mm)", a4.formattedSize)
+
+        assertEquals(215.9f, letter.widthMm, 0.01f)
+        assertEquals(279.4f, letter.heightMm, 0.01f)
+        assertEquals("Letter (8.5 × 11 in)", letter.formattedSize)
+
+        assertEquals(215.9f, legal.widthMm, 0.01f)
+        assertEquals(355.6f, legal.heightMm, 0.01f)
+        assertEquals("Legal (8.5 × 14 in)", legal.formattedSize)
+
+        // Aspect ratio verification
+        val portrait = com.ct.explorer.utils.docx.PageOrientation.PORTRAIT
+        val landscape = com.ct.explorer.utils.docx.PageOrientation.LANDSCAPE
+
+        assertEquals(210f / 297f, a4.widthToHeightRatio(portrait), 0.001f)
+        assertEquals(297f / 210f, a4.widthToHeightRatio(landscape), 0.001f)
+        assertEquals(215.9f / 279.4f, letter.widthToHeightRatio(portrait), 0.001f)
+        assertEquals(215.9f / 355.6f, legal.widthToHeightRatio(portrait), 0.001f)
+    }
 }

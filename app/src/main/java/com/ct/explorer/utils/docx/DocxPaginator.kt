@@ -42,6 +42,20 @@ enum class PaperSize(
         cssPageSize = "legal"
     );
 
+    val formattedSize: String
+        get() = when (this) {
+            A4 -> "A4 (210 × 297 mm)"
+            LETTER -> "Letter (8.5 × 11 in)"
+            LEGAL -> "Legal (8.5 × 14 in)"
+        }
+
+    val urduFormattedSize: String
+        get() = when (this) {
+            A4 -> "A4 (210 × 297 ملی میٹر)"
+            LETTER -> "لیٹر Letter (8.5 × 11 انچ)"
+            LEGAL -> "لیگل Legal (8.5 × 14 انچ)"
+        }
+
     /**
      * Ratio of width to height for UI canvas scaling.
      */

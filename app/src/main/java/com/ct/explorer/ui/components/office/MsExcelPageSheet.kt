@@ -48,7 +48,7 @@ fun MsExcelPageSheet(
     Surface(
         shape = RoundedCornerShape(2.dp),
         color = Color.White,
-        shadowElevation = 6.dp,
+        shadowElevation = 8.dp,
         border = BorderStroke(0.75.dp, Color(0xFFCBD5E1)),
         modifier = modifier
             .fillMaxWidth()
@@ -68,7 +68,7 @@ fun MsExcelPageSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ExcelHeaderFooterBox(
-                    text = workbookTitle.ifBlank { "Click to add header" },
+                    text = workbookTitle.ifBlank { "دستاویز • Workbook" },
                     textAlign = TextAlign.Start,
                     modifier = Modifier.weight(1f)
                 )
@@ -78,9 +78,9 @@ fun MsExcelPageSheet(
                     modifier = Modifier.weight(1f)
                 )
                 ExcelHeaderFooterBox(
-                    text = "${page.paperSize.title} • ${page.orientation.title}",
+                    text = "${page.paperSize.formattedSize} • ${page.orientation.title}",
                     textAlign = TextAlign.End,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1.2f)
                 )
             }
 
@@ -259,17 +259,17 @@ fun MsExcelPageSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ExcelHeaderFooterBox(
-                    text = "Page ${page.pageNumber} of ${page.totalPages}",
+                    text = "صفحہ ${page.pageNumber} از ${page.totalPages} • Page ${page.pageNumber} of ${page.totalPages}",
                     textAlign = TextAlign.Start,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1.5f)
                 )
                 ExcelHeaderFooterBox(
-                    text = "${page.rows.size} rows",
+                    text = "${page.paperSize.title} (${page.rows.size} rows)",
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f)
                 )
                 ExcelHeaderFooterBox(
-                    text = "Cent File Manager",
+                    text = "دستاویز • Cent Explorer",
                     textAlign = TextAlign.End,
                     modifier = Modifier.weight(1f)
                 )

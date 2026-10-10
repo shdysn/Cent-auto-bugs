@@ -34,7 +34,7 @@ fun MsTextPageSheet(
     Surface(
         shape = RoundedCornerShape(2.dp),
         color = Color.White,
-        shadowElevation = 6.dp,
+        shadowElevation = 8.dp,
         border = BorderStroke(0.75.dp, Color(0xFFCBD5E1)),
         modifier = modifier
             .fillMaxWidth()
@@ -88,7 +88,7 @@ fun MsTextPageSheet(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(
-                            text = "${page.paperSize.title} • Lines ${page.startLineNumber}–${page.endLineNumber}",
+                            text = "${page.paperSize.formattedSize} • Lines ${page.startLineNumber}–${page.endLineNumber}",
                             fontSize = 8.5.sp,
                             color = Color(0xFF64748B)
                         )
@@ -140,12 +140,15 @@ fun MsTextPageSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = title,
+                            text = if (title.isNotBlank()) "$title • دستاویز" else "دستاویز",
                             fontSize = 9.sp,
-                            color = Color(0xFF64748B)
+                            color = Color(0xFF64748B),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(
-                            text = "Page ${page.pageNumber} of ${page.totalPages}",
+                            text = "صفحہ ${page.pageNumber} از ${page.totalPages} • Page ${page.pageNumber} of ${page.totalPages}",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF64748B)

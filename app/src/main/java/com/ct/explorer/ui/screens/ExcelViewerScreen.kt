@@ -47,12 +47,14 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ct.explorer.data.model.FileItem
+import com.ct.explorer.ui.components.office.DocumentPreviewControlBar
 import com.ct.explorer.ui.components.office.MsExcelBottomBar
 import com.ct.explorer.ui.components.office.MsExcelFormulaBar
 import com.ct.explorer.ui.components.office.MsExcelPageSheet
 import com.ct.explorer.ui.components.office.MsExcelRibbon
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
 import com.ct.explorer.utils.FileOpener
+import com.ct.explorer.utils.PrintHelper
 import com.ct.explorer.utils.docx.PageMargins
 import com.ct.explorer.utils.docx.PageOrientation
 import com.ct.explorer.utils.docx.PaperSize
@@ -335,84 +337,25 @@ fun ExcelViewerScreen(
                             }
                         }
 
-                        // Paper Size Quick Bar in Fullscreen
+                        // Document Preview Control Bar in Fullscreen
                         if (isOriginalPageView) {
-                            Surface(
-                                color = Color.Black.copy(alpha = 0.35f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "Paper:",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White.copy(alpha = 0.85f)
-                                        )
-                                        PaperSize.values().forEach { size ->
-                                            val isSelected = selectedPaperSize == size
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = if (isSelected) ExcelGreen else Color.White.copy(alpha = 0.15f),
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .clickable { selectedPaperSize = size }
-                                            ) {
-                                                Text(
-                                                    text = size.title,
-                                                    color = Color.White,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                )
-                                            }
-                                        }
+                            DocumentPreviewControlBar(
+                                title = workbook?.title ?: file?.nameWithoutExtension ?: "Spreadsheet",
+                                documentType = "Excel (${workbook?.fileType ?: "XLSX"})",
+                                selectedPaperSize = selectedPaperSize,
+                                selectedOrientation = selectedOrientation,
+                                pageCount = paginatedPages.size,
+                                onPaperSizeChange = { selectedPaperSize = it },
+                                onOrientationChange = { selectedOrientation = it },
+                                onPrintClick = {
+                                    if (file != null) {
+                                        PrintHelper.printSpreadsheetFile(context, file, selectedPaperSize, selectedOrientation, selectedSheetIndex)
+                                    } else {
+                                        showPrintSetupDialog = true
                                     }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = Color.White.copy(alpha = 0.15f),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .clickable {
-                                                    selectedOrientation = if (selectedOrientation == PageOrientation.LANDSCAPE)
-                                                        PageOrientation.PORTRAIT else PageOrientation.LANDSCAPE
-                                                }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (selectedOrientation == PageOrientation.PORTRAIT)
-                                                        Icons.Default.StayCurrentPortrait else Icons.Default.StayCurrentLandscape,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = selectedOrientation.title,
-                                                    fontSize = 11.sp,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                                },
+                                accentColor = ExcelGreen
+                            )
                         }
                     }
                 }
@@ -619,118 +562,25 @@ fun ExcelViewerScreen(
                 }
             }
 
-            // Paper Size Quick Bar (when in original page view and not in fullscreen)
+            // Document Preview Control Bar (when in original page view and not in fullscreen)
             AnimatedVisibility(visible = isOriginalPageView && !isFullScreen) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "Paper:",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            PaperSize.values().forEach { size ->
-                                val isSelected = selectedPaperSize == size
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) ExcelGreen else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(1.dp, if (isSelected) ExcelGreen else MaterialTheme.colorScheme.outlineVariant),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { selectedPaperSize = size }
-                                ) {
-                                    Text(
-                                        text = size.title,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
+                DocumentPreviewControlBar(
+                    title = workbook?.title ?: file?.nameWithoutExtension ?: "Spreadsheet",
+                    documentType = "Excel (${workbook?.fileType ?: "XLSX"})",
+                    selectedPaperSize = selectedPaperSize,
+                    selectedOrientation = selectedOrientation,
+                    pageCount = paginatedPages.size,
+                    onPaperSizeChange = { selectedPaperSize = it },
+                    onOrientationChange = { selectedOrientation = it },
+                    onPrintClick = {
+                        if (file != null) {
+                            PrintHelper.printSpreadsheetFile(context, file, selectedPaperSize, selectedOrientation, selectedSheetIndex)
+                        } else {
+                            showPrintSetupDialog = true
                         }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // Orientation toggle
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        selectedOrientation = if (selectedOrientation == PageOrientation.LANDSCAPE)
-                                            PageOrientation.PORTRAIT else PageOrientation.LANDSCAPE
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = if (selectedOrientation == PageOrientation.PORTRAIT)
-                                            Icons.Default.StayCurrentPortrait else Icons.Default.StayCurrentLandscape,
-                                        contentDescription = null,
-                                        tint = ExcelGreen,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = selectedOrientation.title,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            // Print Setup button
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = ExcelGreenLight,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { showPrintSetupDialog = true }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Print,
-                                        contentDescription = null,
-                                        tint = ExcelGreen,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Print Setup",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ExcelGreen
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                    },
+                    accentColor = ExcelGreen
+                )
             }
 
             // Cell Inspector / Formula Bar & Stats Pill Bar (shown in Grid View)
@@ -988,7 +838,7 @@ fun ExcelViewerScreen(
                                                 border = BorderStroke(0.5.dp, Color(0xFF86EFAC))
                                             ) {
                                                 Text(
-                                                    text = "${selectedPaperSize.title} • ${selectedOrientation.title}",
+                                                    text = "${selectedPaperSize.formattedSize} • ${selectedOrientation.title}",
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = ExcelGreenDark,
@@ -1076,12 +926,12 @@ fun ExcelViewerScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "Sheet: ${page.sheetName} (Rows ${page.startRowIndex}–${page.endRowIndex})",
+                                                text = "دستاویز • Sheet: ${page.sheetName}",
                                                 fontSize = 9.5.sp,
                                                 color = Color(0xFF64748B)
                                             )
                                             Text(
-                                                text = "Page ${page.pageNumber} of ${paginatedPages.size}",
+                                                text = "صفحہ ${page.pageNumber} از ${paginatedPages.size} • Page ${page.pageNumber} of ${paginatedPages.size}",
                                                 fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color(0xFF475569)

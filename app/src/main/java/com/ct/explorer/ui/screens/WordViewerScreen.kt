@@ -52,6 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ct.explorer.data.model.FileItem
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
 import com.ct.explorer.utils.FileOpener
+import com.ct.explorer.utils.PrintHelper
+import com.ct.explorer.ui.components.office.DocumentPreviewControlBar
 import com.ct.explorer.ui.components.office.MsWordHorizontalRuler
 import com.ct.explorer.ui.components.office.MsWordPageSheet
 import com.ct.explorer.ui.components.office.MsWordRibbon
@@ -244,8 +246,29 @@ fun WordViewerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(if (isOriginalPageView) Color(0xFFE1DFDD) else readingTheme.bg)
+                .background(if (isOriginalPageView) Color(0xFFE2E8F0) else readingTheme.bg)
         ) {
+            // Authentic Document Preview Control Bar (Matching user sample with A4, Letter, Legal and PDF print)
+            if (isOriginalPageView && document != null) {
+                DocumentPreviewControlBar(
+                    title = state.title.ifEmpty { file?.name ?: "Word Document" },
+                    documentType = "Word (.docx)",
+                    selectedPaperSize = selectedPaperSize,
+                    selectedOrientation = selectedOrientation,
+                    pageCount = paginatedPages.size,
+                    onPaperSizeChange = { selectedPaperSize = it },
+                    onOrientationChange = { selectedOrientation = it },
+                    onPrintClick = {
+                        if (file != null) {
+                            PrintHelper.printWordFile(context, file, selectedPaperSize, selectedOrientation)
+                        } else {
+                            showPrintSetupDialog = true
+                        }
+                    },
+                    accentColor = Color(0xFF2563EB)
+                )
+            }
+
             // Horizontal Ruler directly below Ribbon in Page View
             if (isOriginalPageView && showRuler) {
                 MsWordHorizontalRuler(

@@ -61,8 +61,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ct.explorer.data.model.FileItem
 import com.ct.explorer.ui.theme.CtOrange
 import com.ct.explorer.ui.viewmodel.ExplorerViewModel
-import com.ct.explorer.utils.FileOpener
+import com.ct.explorer.ui.components.office.DocumentPreviewControlBar
 import com.ct.explorer.ui.components.office.MsTextPageSheet
+import com.ct.explorer.utils.FileOpener
+import com.ct.explorer.utils.PrintHelper
 import com.ct.explorer.utils.docx.PageMargins
 import com.ct.explorer.utils.docx.PageOrientation
 import com.ct.explorer.utils.docx.PaperSize
@@ -373,148 +375,28 @@ fun TextEditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(if (viewMode == EditorViewMode.PAGE_VIEW) Color(0xFFCBD5E1) else Color(0xFF13141F))
+                .background(if (viewMode == EditorViewMode.PAGE_VIEW) Color(0xFFE2E8F0) else Color(0xFF13141F))
         ) {
-            // Paper Size Quick Bar (when in Page View)
+            // Document Preview Control Bar (Matching user sample with A4, Letter, Legal and PDF print)
             if (viewMode == EditorViewMode.PAGE_VIEW) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "Paper:",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            PaperSize.values().forEach { size ->
-                                val isSelected = selectedPaperSize == size
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) CtOrange else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(1.dp, if (isSelected) CtOrange else MaterialTheme.colorScheme.outlineVariant),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { selectedPaperSize = size }
-                                ) {
-                                    Text(
-                                        text = size.title,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
+                DocumentPreviewControlBar(
+                    title = displayTitle,
+                    documentType = if (state.isHtmlMode) "HTML" else "Text / Code",
+                    selectedPaperSize = selectedPaperSize,
+                    selectedOrientation = selectedOrientation,
+                    pageCount = paginatedTextPages.size,
+                    onPaperSizeChange = { selectedPaperSize = it },
+                    onOrientationChange = { selectedOrientation = it },
+                    onPrintClick = {
+                        val activeFile = state.file
+                        if (activeFile != null) {
+                            PrintHelper.printTextFile(context, activeFile, selectedPaperSize, selectedOrientation)
+                        } else {
+                            PrintHelper.printTextContent(context, displayTitle, textFieldValue.text, displayTitle, selectedPaperSize, selectedOrientation)
                         }
-
-                        // Margin selector
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "Margins:",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            PageMargins.values().forEach { margin ->
-                                val isSelected = selectedMargins == margin
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) Color(0xFF2563EB) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF2563EB) else MaterialTheme.colorScheme.outlineVariant),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { selectedMargins = margin }
-                                ) {
-                                    Text(
-                                        text = margin.title,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Orientation toggle
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    selectedOrientation = if (selectedOrientation == PageOrientation.PORTRAIT)
-                                        PageOrientation.LANDSCAPE else PageOrientation.PORTRAIT
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (selectedOrientation == PageOrientation.PORTRAIT)
-                                        Icons.Default.StayCurrentPortrait else Icons.Default.StayCurrentLandscape,
-                                    contentDescription = null,
-                                    tint = CtOrange,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = selectedOrientation.title,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        // Print Setup button
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = CtOrange.copy(alpha = 0.15f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { showPrintSetupDialog = true }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Print,
-                                    contentDescription = null,
-                                    tint = CtOrange,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Print / PDF",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CtOrange
-                                )
-                            }
-                        }
-                    }
-                }
+                    },
+                    accentColor = Color(0xFF2563EB)
+                )
             }
 
             // HTML Snippet Toolbar (Only when editor is active)
@@ -871,7 +753,7 @@ private fun TextOriginalPageView(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFCBD5E1)),
+                .background(Color(0xFFE2E8F0)),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -886,7 +768,7 @@ private fun TextOriginalPageView(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFCBD5E1))
+            .background(Color(0xFFE2E8F0))
             .transformable(state = pageTransformState)
     ) {
         LazyColumn(
